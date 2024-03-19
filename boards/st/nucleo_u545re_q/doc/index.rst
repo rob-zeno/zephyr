@@ -1,48 +1,25 @@
 .. _nucleo_u545re_q_board:
 
-ST Nucleo U545RE Q
+ST Nucleo U545RE-Q
 ##################
 
 Overview
 ********
 
-The Nucleo U545RE Q board, featuring an ARM Cortex-M33 based STM32U545RE MCU,
+The Nucleo U545RE-Q board, featuring an ARM Cortex-M33 based STM32U545RE MCU,
 provides an affordable and flexible way for users to try out new concepts and
-build prototypes by choosing from the various combinations of performance and
-power consumption features. Here are some highlights of the Nucleo U545RE Q
-board:
+build prototypes by choosing from the various combinations of performance,
+power consumption and features.
 
+The Nucleo U545RE-Q board integrates the ST-LINK/V3 debugger and programmer.
 
-- STM32U545RE microcontroller in LQFP64 package
-- Internal SMPS to generate V core logic supply
-- Two types of extension resources:
+The Nucleo U545RE-Q board comes with the STM32 comprehensive software HAL library together
+with various packaged software examples.
 
+More information about the board can be found at the `Nucleo U545RE-Q website`_.
 
-ALL OF THE FOLLOWING NEEDS TO BE UPDATES BY COMPARING:
-
-	U545/Nucleo U545RE documents
 	https://www.st.com/resource/en/data_brief/nucleo-u545re-q.pdf
 	https://www.st.com/resource/en/datasheet/stm32u545ce.pdf
-
-	U575/Nucleo U575ZI documents
-	https://www.st.com/resource/en/datasheet/stm32u575ag.pdf
-	https://www.st.com/resource/en/data_brief/nucleo-u575zi-q.pdf
-
-DO NOT TRUST ANYTHING BELOW THIS!
-
-
-  - Arduino Uno V3 connectivity
-  - ST morpho extension pin headers for full access to all STM32 I/Os
-
-- On-board ST-LINK/V3E debugger/programmer
-- Flexible board power supply:
-
-   - USB VBUS or external source(3.3V, 5V, 7 - 12V)
-   - ST-Link V3E
-
-- Three users LEDs
-- Two push-buttons: USER and RESET
-- USB Type-C |trade| Sink device FS
 
 Hardware
 ********
@@ -147,15 +124,15 @@ They operate at a frequency of up to 160 MHz.
  - CORDIC for trigonometric functions acceleration
  - FMAC (filter mathematical accelerator)
 
-More information about STM32U575ZI can be found here:
+More information about STM32U545RE can be found here:
 
-- `STM32U575ZI on www.st.com`_
-- `STM32U575 reference manual`_
+- `STM32U545RE on www.st.com`_
+- `STM32U545 reference manual`_
 
 Supported Features
 ==================
 
-The Zephyr nucleo_u575zi_q board configuration supports the following hardware features:
+The Zephyr nucleo_u545re_q board configuration supports the following hardware features:
 
 +-----------+------------+-------------------------------------+
 | Interface | Controller | Driver/Component                    |
@@ -163,8 +140,6 @@ The Zephyr nucleo_u575zi_q board configuration supports the following hardware f
 | CAN/CANFD | on-chip    | canbus                              |
 +-----------+------------+-------------------------------------+
 | CLOCK     | on-chip    | reset and clock control             |
-+-----------+------------+-------------------------------------+
-| DAC       | on-chip    | DAC Controller                      |
 +-----------+------------+-------------------------------------+
 | GPIO      | on-chip    | gpio                                |
 +-----------+------------+-------------------------------------+
@@ -181,29 +156,25 @@ The Zephyr nucleo_u575zi_q board configuration supports the following hardware f
 +-----------+------------+-------------------------------------+
 | WATCHDOG  | on-chip    | independent watchdog                |
 +-----------+------------+-------------------------------------+
-| BKP SRAM  | on-chip    | Backup SRAM                         |
-+-----------+------------+-------------------------------------+
 | RNG       | on-chip    | True Random number generator        |
 +-----------+------------+-------------------------------------+
-
 
 Other hardware features are not yet supported on this Zephyr port.
 
 The default configuration can be found in the defconfig file:
-``boards/arm/nucleo_u575zi_q/nucleo_u575zi_q_defconfig``
+``boards/st/nucleo_u545re_q/nucleo_u545re_q_defconfig``
 
 
 Connections and IOs
 ===================
 
-Nucleo U575ZI Q Board has 9 GPIO controllers. These controllers are responsible for pin muxing,
+Nucleo U545RE Q Board has 9 GPIO controllers. These controllers are responsible for pin muxing,
 input/output, pull-up, etc.
 
 For more details please refer to `STM32 Nucleo-144 board User Manual`_.
 
 Default Zephyr Peripheral Mapping:
 ----------------------------------
-
 
 - CAN/CANFD_TX: PD1
 - CAN/CANFD_RX: PD0
@@ -230,28 +201,21 @@ Default Zephyr Peripheral Mapping:
 System Clock
 ------------
 
-Nucleo U575ZI Q System Clock could be driven by internal or external oscillator,
+Nucleo U545RE Q System Clock could be driven by internal or external oscillator,
 as well as main PLL clock. By default System clock is driven by PLL clock at
 160MHz, driven by 4MHz medium speed internal oscillator.
 
 Serial Port
 -----------
 
-Nucleo U575ZI Q board has 6 U(S)ARTs. The Zephyr console output is assigned to
+Nucleo U545RE Q board has 3 U(S)ARTs. The Zephyr console output is assigned to
 USART1. Default settings are 115200 8N1.
-
-
-Backup SRAM
------------
-
-In order to test backup SRAM you may want to disconnect VBAT from VDD. You can
-do it by removing ``SB50`` jumper on the back side of the board.
 
 
 Programming and Debugging
 *************************
 
-Nucleo U575ZI-Q board includes an ST-LINK/V3 embedded debug tool interface.
+Nucleo U545RE-Q board includes an ST-LINK/V3 embedded debug tool interface.
 This probe allows to flash the board using various tools.
 
 Flashing
@@ -260,23 +224,10 @@ Flashing
 Board is configured to be flashed using west STM32CubeProgrammer runner.
 Installation of `STM32CubeProgrammer`_ is then required to flash the board.
 
-Alternatively, openocd (provided in Zephyr SDK), JLink and pyocd can also be
-used to flash and debug the board if west is told to use it as runner,
-which can be done by passing either ``-r openocd``, ``-r jlink`` or ``-r pyocd``.
-
-For pyocd additional target information needs to be installed.
-This can be done by executing the following commands.
-
-.. code-block:: console
-
-   $ pyocd pack --update
-   $ pyocd pack --install stm32u5
-
-
-Flashing an application to Nucleo U575ZI Q
+Flashing an application to Nucleo U545RE Q
 ------------------------------------------
 
-Connect the Nucleo U575ZI Q to your host computer using the USB port.
+Connect the Nucleo U545RE Q to your host computer using the USB port.
 Then build and flash an application. Here is an example for the
 :ref:`hello_world` application.
 
@@ -290,7 +241,7 @@ Then build and flash the application.
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
-   :board: nucleo_u575zi_q
+   :board: nucleo_u545re_q
    :goals: build flash
 
 You should see the following message on the console:
@@ -299,28 +250,17 @@ You should see the following message on the console:
 
    Hello World! arm
 
-Debugging
-=========
-
-Default flasher for this board is openocd. It could be used in the usual way.
-Here is an example for the :zephyr:code-sample:`blinky` application.
-
-.. zephyr-app-commands::
-   :zephyr-app: samples/basic/blinky
-   :board: nucleo_u575zi_q
-   :goals: debug
-
 Building a secure/non-secure with Arm |reg| TrustZone |reg|
 ===========================================================
 
 The TF-M applications can be run on this board, thanks to its Arm |reg| TrustZone |reg|
 support.
 In TF-M configuration, Zephyr is run on the non-secure domain. A non-secure image
-can be generated using ``nucleo_u575zi_q_ns`` as build target.
+can be generated using ``nucleo_u545re_q_ns`` as build target.
 
 .. code-block:: bash
 
-   $ west build -b nucleo_u575zi_q_ns path/to/source/directory
+   $ west build -b nucleo_u545re_q_ns path/to/source/directory
 
 Note: When building the ``*_ns`` image with TF-M, ``build/tfm/api_ns/postbuild.sh`` bash script
 is run automatically in a post-build step to make some required flash layout changes.
@@ -341,17 +281,14 @@ Note: Check the ``build/tfm`` directory to ensure that the commands required by 
 (``readlink``, etc.) are available on your system. Please also check ``STM32_Programmer_CLI``
 (which is used for initialization) is available in the PATH.
 
-.. _STM32 Nucleo-144 board User Manual:
-   https://www.st.com/resource/en/user_manual/dm00615305.pdf
+.. _STM32 Nucleo U545RE Q board User Manual:
+   https://www.st.com/resource/en/user_manual/um3062-stm32u5-nucleo64-board-mb1841-stmicroelectronics.pdf
 
-.. _STM32U575ZI on www.st.com:
-   https://www.st.com/en/microcontrollers/stm32u575zi.html
+.. _STM32U545RE on www.st.com:
+   https://www.st.com/en/microcontrollers-microprocessors/stm32u545re.html
 
-.. _STM32U575 reference manual:
-   https://www.st.com/resource/en/reference_manual/rm0456-stm32u575585-armbased-32bit-mcus-stmicroelectronics.pdf
+.. _STM32U545 reference manual:
+   https://www.st.com/resource/en/reference_manual/rm0456-stm32u5-series-armbased-32bit-mcus-stmicroelectronics.pdf
 
 .. _STM32CubeProgrammer:
    https://www.st.com/en/development-tools/stm32cubeprog.html
-
-.. _STMicroelectronics customized version of OpenOCD:
-   https://github.com/STMicroelectronics/OpenOCD
