@@ -1,0 +1,25 @@
+identifier: nucleo_u545re_q
+name: ST Nucleo U545RE Q
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+supported:
+  - arduino_gpio
+  - arduino_i2c
+  - arduino_serial
+  - arduino_spi
+  - can
+  - adc
+  - dac
+  - gpio
+  - i2c
+  - spi
+  - usart
+  - watchdog
+  - backup_sram
+  - dma
+ram: 274
+flash: 512
+vendor: st

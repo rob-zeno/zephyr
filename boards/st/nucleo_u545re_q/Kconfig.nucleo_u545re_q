@@ -1,0 +1,5 @@
+# Copyright (c) 2021 Linaro Limited
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_NUCLEO_U545RE_Q
+	select SOC_STM32U545XX

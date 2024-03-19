@@ -1,0 +1,79 @@
+/*
+ * Copyright (c) 2021 Linaro Limited
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include "nucleo_u545re_q-common.dtsi"
+
+/ {
+	model = "STMicroelectronics STM32U545RE-Q-NUCLEO board";
+	compatible = "st,stm32u545re-nucleo-q";
+
+/*
+	#address-cells = <1>;
+	#size-cells = <1>;
+*/
+
+	chosen {
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,canbus = &fdcan1;
+	};
+
+#if 0
+	leds: leds {
+		compatible = "gpio-leds";
+		green_led: led_0 {
+			gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
+			label = "User LD4";
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		user_button: button {
+			label = "User";
+			gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+#endif
+
+#if 0
+	aliases {
+		led0 = &green_led;
+		sw0 = &user_button;
+		volt-sensor0 = &vref;
+		volt-sensor1 = &vbat;
+	};
+#endif
+
+#if 0
+/*
+	aliases {
+		led0 = &blue_led_1;
+		sw0 = &user_button;
+		pwm-led0 = &pwm_led_1;
+		pwm-led1 = &pwm_led_2;
+		watchdog0 = &iwdg;
+		volt-sensor0 = &vref1;
+		volt-sensor1 = &vbat4;
+	};
+*/
+#endif
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+&gpdma1 {
+	status = "okay";
+};
