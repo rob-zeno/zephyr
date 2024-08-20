@@ -49,7 +49,7 @@ static struct cpu_start_cb {
 #ifdef CONFIG_SYS_CLOCK_EXISTS
 	/** True if smp_timer_init() needs to be called. */
 	bool reinit_timer;
-#endif
+#endif /* CONFIG_SYS_CLOCK_EXISTS */
 } cpu_start_fn;
 
 static struct k_spinlock cpu_start_lock;
@@ -60,6 +60,7 @@ unsigned int z_smp_global_lock(void)
 
 	if (!_current->base.global_lock_count) {
 		while (!atomic_cas(&global_lock, 0, 1)) {
+			arch_spin_relax();
 		}
 	}
 
@@ -74,7 +75,7 @@ void z_smp_global_unlock(unsigned int key)
 		_current->base.global_lock_count--;
 
 		if (!_current->base.global_lock_count) {
-			atomic_clear(&global_lock);
+			(void)atomic_clear(&global_lock);
 		}
 	}
 
@@ -85,7 +86,7 @@ void z_smp_global_unlock(unsigned int key)
 void z_smp_release_global_lock(struct k_thread *thread)
 {
 	if (!thread->base.global_lock_count) {
-		atomic_clear(&global_lock);
+		(void)atomic_clear(&global_lock);
 	}
 }
 
@@ -108,7 +109,6 @@ static void wait_for_start_signal(atomic_t *start_flag)
 
 static inline void smp_init_top(void *arg)
 {
-	struct k_thread dummy_thread;
 	struct cpu_start_cb csc = arg ? *(struct cpu_start_cb *)arg : (struct cpu_start_cb){0};
 
 	/* Let start_cpu() know that this CPU has powered up. */
@@ -123,14 +123,14 @@ static inline void smp_init_top(void *arg)
 		/* Initialize the dummy thread struct so that
 		 * the scheduler can schedule actual threads to run.
 		 */
-		z_dummy_thread_init(&dummy_thread);
+		z_dummy_thread_init(&_thread_dummy);
 	}
 
 #ifdef CONFIG_SYS_CLOCK_EXISTS
 	if ((arg == NULL) || csc.reinit_timer) {
 		smp_timer_init();
 	}
-#endif
+#endif /* CONFIG_SYS_CLOCK_EXISTS */
 
 	/* Do additional initialization steps if needed. */
 	if (csc.fn != NULL) {
@@ -156,7 +156,7 @@ static void start_cpu(int id, struct cpu_start_cb *csc)
 	(void)atomic_clear(&ready_flag);
 
 	/* Power up the CPU */
-	arch_start_cpu(id, z_interrupt_stacks[id], CONFIG_ISR_STACK_SIZE,
+	arch_cpu_start(id, z_interrupt_stacks[id], CONFIG_ISR_STACK_SIZE,
 		       smp_init_top, csc);
 
 	/* Wait until the newly powered up CPU to signal that
@@ -177,7 +177,7 @@ void k_smp_cpu_start(int id, smp_init_fn fn, void *arg)
 
 #ifdef CONFIG_SYS_CLOCK_EXISTS
 	cpu_start_fn.reinit_timer = true;
-#endif
+#endif /* CONFIG_SYS_CLOCK_EXISTS */
 
 	/* We are only starting one CPU so we do not need to synchronize
 	 * across all CPUs using the start_flag. So just set it to 1.
@@ -206,7 +206,7 @@ void k_smp_cpu_resume(int id, smp_init_fn fn, void *arg,
 	cpu_start_fn.reinit_timer = reinit_timer;
 #else
 	ARG_UNUSED(reinit_timer);
-#endif
+#endif /* CONFIG_SYS_CLOCK_EXISTS */
 
 	/* We are only starting one CPU so we do not need to synchronize
 	 * across all CPUs using the start_flag. So just set it to 1.

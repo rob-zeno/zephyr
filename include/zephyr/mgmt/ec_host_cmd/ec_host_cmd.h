@@ -10,6 +10,8 @@
 /**
  * @brief EC Host Command Interface
  * @defgroup ec_host_cmd_interface EC Host Command Interface
+ * @since 2.4
+ * @version 0.1.0
  * @ingroup io_interfaces
  * @{
  */
@@ -347,7 +349,7 @@ bool ec_host_cmd_send_in_progress_ended(void);
  * @brief Get final result of a last Host Command that has sent EC_HOST_CMD_IN_PROGRESS status.
  *
  * A Host Command that sends EC_HOST_CMD_IN_PROGRESS status doesn't send a final result.
- * Get the saved status with this function. The status can be get only once. Futher calls return
+ * Get the saved status with this function. The status can be get only once. Further calls return
  * EC_HOST_CMD_UNAVAILABLE.
  *
  * Saving status of Host Commands that send response data is not supported.

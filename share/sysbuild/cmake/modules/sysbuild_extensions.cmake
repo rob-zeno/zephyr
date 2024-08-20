@@ -20,7 +20,7 @@ function(load_cache)
   if(NOT TARGET ${LOAD_CACHE_IMAGE}_cache)
     add_custom_target(${LOAD_CACHE_IMAGE}_cache)
   endif()
-  file(STRINGS "${LOAD_CACHE_BINARY_DIR}/CMakeCache.txt" cache_strings)
+  file(STRINGS "${LOAD_CACHE_BINARY_DIR}/CMakeCache.txt" cache_strings ENCODING UTF-8)
   foreach(str ${cache_strings})
     # Using a regex for matching whole 'VAR_NAME:TYPE=VALUE' will strip semi-colons
     # thus resulting in lists to become strings.
@@ -146,9 +146,9 @@ function(sysbuild_cache)
     endif()
   endforeach()
   if(DEFINED BOARD_REVISION)
-    list(APPEND sysbuild_cache_strings "BOARD:STRING=${BOARD}@${BOARD_REVISION}${BOARD_IDENTIFIER}\n")
+    list(APPEND sysbuild_cache_strings "BOARD:STRING=${BOARD}@${BOARD_REVISION}${BOARD_QUALIFIERS}\n")
   else()
-    list(APPEND sysbuild_cache_strings "BOARD:STRING=${BOARD}${BOARD_IDENTIFIER}\n")
+    list(APPEND sysbuild_cache_strings "BOARD:STRING=${BOARD}${BOARD_QUALIFIERS}\n")
   endif()
   list(APPEND sysbuild_cache_strings "SYSBUILD_NAME:STRING=${SB_CACHE_APPLICATION}\n")
 
@@ -460,16 +460,6 @@ function(ExternalZephyrProject_Cmake)
                PROPERTY IMAGE_CONF_SCRIPT
   )
 
-  # Update ROOT variables with relative paths to use absolute paths based on
-  # the source application directory.
-  foreach(type MODULE_EXT BOARD SOC ARCH SCA)
-    if(DEFINED CACHE{${type}_ROOT} AND NOT IS_ABSOLUTE $CACHE{${type}_ROOT})
-      set(rel_path $CACHE{${type}_ROOT})
-      cmake_path(ABSOLUTE_PATH rel_path BASE_DIRECTORY "${APP_DIR}" NORMALIZE OUTPUT_VARIABLE abs_path)
-      set(${type}_ROOT ${abs_path} CACHE PATH "Sysbuild adjusted absolute path" FORCE)
-    endif()
-  endforeach()
-
   sysbuild_cache(CREATE APPLICATION ${ZCMAKE_APPLICATION})
 
   foreach(script ${${ZCMAKE_APPLICATION}_CONF_SCRIPT})
@@ -597,7 +587,7 @@ function(sysbuild_cache_set)
     return()
   elseif(VARS_REMOVE_DUPLICATES AND NOT VARS_APPEND)
     message(FATAL_ERROR
-            "sysbuild_set(VAR <var> APPEND REMOVE_DUPLICATES ...) missing required APPEND option")
+            "sysbuild_cache_set(VAR <var> APPEND REMOVE_DUPLICATES ...) missing required APPEND option")
   endif()
 
   get_property(var_type CACHE ${VARS_VAR} PROPERTY TYPE)
@@ -615,9 +605,7 @@ function(sysbuild_cache_set)
     # Search for these exact items in the existing value and prevent adding
     # them if they are already present which avoids issues with double addition
     # when cmake is reran.
-    string(FIND "$CACHE{${VARS_VAR}}" "${VARS_UNPARSED_ARGUMENTS}" index)
-
-    if(NOT ${index} EQUAL -1)
+    if("${VARS_UNPARSED_ARGUMENTS}" IN_LIST var_new)
       return()
     endif()
 
@@ -663,7 +651,7 @@ function(sysbuild_add_subdirectory source_dir)
       " (expected at most 2, got ${ARGC})"
     )
   endif()
-  set(binary_dir ${ARGV1})
+  set(binary_dir ${ARGN})
 
   # Update SYSBUILD_CURRENT_SOURCE_DIR in this scope, to support nesting
   # of sysbuild_add_subdirectory() and even regular add_subdirectory().

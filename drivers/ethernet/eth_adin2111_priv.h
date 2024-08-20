@@ -48,10 +48,14 @@
 #define ADIN2111_CONFIG2_P2_FWD_UNK2P1		BIT(14)
 /* Forward Frames from Port 1 Not Matching a MAC Address to Port 2 */
 #define ADIN2111_CONFIG2_P1_FWD_UNK2P2		BIT(13)
+/* Forward Frames Not Matching Any MAC Address to the Host */
+#define ADIN2111_CONFIG2_P2_FWD_UNK2HOST	BIT(12)
 /* Enable Cut Through from Port to Port */
 #define ADIN2111_CONFIG2_PORT_CUT_THRU_EN	BIT(11)
 /* Enable CRC Append */
 #define ADIN2111_CONFIG2_CRC_APPEND		BIT(5)
+/* Forward Frames Not Matching Any MAC Address to the Host */
+#define ADIN2111_CONFIG2_P1_FWD_UNK2HOST	BIT(2)
 
 /* Status Register 0 */
 #define ADIN2111_STATUS0			0x08U
@@ -136,6 +140,16 @@
 /* P2 MAC Receive Register */
 #define ADIN2111_P2_RX				0xC1U
 
+/* MAC reset status */
+#define ADIN1110_MAC_RST_STATUS_REG		0x3BU
+
+/* MAC reset */
+#define ADIN2111_SOFT_RST_REG			0x3CU
+#define ADIN2111_SWRESET_KEY1			0x4F1CU
+#define ADIN2111_SWRESET_KEY2			0xC1F4U
+#define ADIN2111_SWRELEASE_KEY1			0x6F1AU
+#define ADIN2111_SWRELEASE_KEY2			0xA1F6U
+
 /* SPI header size in bytes */
 #define ADIN2111_SPI_HEADER_SIZE		2U
 /* SPI header size for write transaction */
@@ -215,22 +229,21 @@ struct adin2111_config {
 };
 
 struct adin2111_data {
-	/* Port 0: PHY 1, Port 1: PHY 2 */
-	const struct device *port[2];
-	struct gpio_callback gpio_int_callback;
-	struct k_sem offload_sem;
 	struct k_mutex lock;
+	struct k_sem offload_sem;
 	uint32_t imask0;
 	uint32_t imask1;
-	uint16_t ifaces_left_to_init;
 	uint8_t *buf;
+	/* Port 0: PHY 1, Port 1: PHY 2 */
+	const struct device *port[2];
+	uint8_t *oa_tx_buf;
+	uint8_t *oa_rx_buf;
+	uint16_t ifaces_left_to_init;
 	uint16_t scur;
+	struct gpio_callback gpio_int_callback;
 	bool oa;
 	bool oa_prot;
 	uint8_t oa_cps;
-	uint8_t oa_tx_buf[ADIN2111_OA_BUF_SZ];
-	uint8_t oa_rx_buf[ADIN2111_OA_BUF_SZ];
-
 	K_KERNEL_STACK_MEMBER(rx_thread_stack, CONFIG_ETH_ADIN2111_IRQ_THREAD_STACK_SIZE);
 	struct k_thread rx_thread;
 };

@@ -275,7 +275,8 @@ static int wifi_connect(uint32_t mgmt_request, struct net_if *iface,
 	    (params->ssid_length == 0U) ||
 	    ((params->security == WIFI_SECURITY_TYPE_PSK ||
 		  params->security == WIFI_SECURITY_TYPE_WPA_PSK ||
-		  params->security == WIFI_SECURITY_TYPE_PSK_SHA256) &&
+		  params->security == WIFI_SECURITY_TYPE_PSK_SHA256 ||
+		  params->security == WIFI_SECURITY_TYPE_WPA_AUTO_PERSONAL) &&
 	     ((params->psk_length < 8) || (params->psk_length > 64) ||
 	      (params->psk_length == 0U) || !params->psk)) ||
 	    ((params->security == WIFI_SECURITY_TYPE_SAE) &&
@@ -434,6 +435,40 @@ static int wifi_ap_sta_disconnect(uint32_t mgmt_request, struct net_if *iface,
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_AP_STA_DISCONNECT, wifi_ap_sta_disconnect);
 
+static int wifi_ap_config_params(uint32_t mgmt_request, struct net_if *iface,
+				 void *data, size_t len)
+{
+	const struct device *dev = net_if_get_device(iface);
+	const struct wifi_mgmt_ops *const wifi_mgmt_api = get_wifi_api(iface);
+	struct wifi_ap_config_params *params = data;
+
+	if (dev == NULL) {
+		return -ENODEV;
+	}
+
+	if (wifi_mgmt_api == NULL ||
+	    wifi_mgmt_api->ap_config_params == NULL) {
+		return -ENOTSUP;
+	}
+
+	if (!data || len != sizeof(*params)) {
+		return -EINVAL;
+	}
+
+	if (params->type & WIFI_AP_CONFIG_PARAM_MAX_NUM_STA) {
+		if (params->max_num_sta > CONFIG_WIFI_MGMT_AP_MAX_NUM_STA) {
+			LOG_INF("Maximum number of stations(%d) "
+				"exceeded default configured value = %d.",
+				params->max_num_sta, CONFIG_WIFI_MGMT_AP_MAX_NUM_STA);
+			return -EINVAL;
+		}
+	}
+
+	return wifi_mgmt_api->ap_config_params(dev, params);
+}
+
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_AP_CONFIG_PARAM, wifi_ap_config_params);
+
 static int wifi_iface_status(uint32_t mgmt_request, struct net_if *iface,
 			  void *data, size_t len)
 {
@@ -504,7 +539,7 @@ static int wifi_set_power_save(uint32_t mgmt_request, struct net_if *iface,
 			return -EIO;
 		}
 
-		if (info.state == WIFI_STATE_COMPLETED) {
+		if (info.state >= WIFI_STATE_ASSOCIATED) {
 			ps_params->fail_reason =
 				WIFI_PS_PARAM_FAIL_DEVICE_CONNECTED;
 			return -ENOTSUP;
@@ -718,6 +753,26 @@ static int wifi_get_version(uint32_t mgmt_request, struct net_if *iface,
 }
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_VERSION, wifi_get_version);
+
+static int wifi_set_rts_threshold(uint32_t mgmt_request, struct net_if *iface,
+				  void *data, size_t len)
+{
+	const struct device *dev = net_if_get_device(iface);
+	const struct wifi_mgmt_ops *const wifi_mgmt_api = get_wifi_api(iface);
+	unsigned int *rts_threshold = data;
+
+	if (wifi_mgmt_api == NULL || wifi_mgmt_api->set_rts_threshold == NULL) {
+		return -ENOTSUP;
+	}
+
+	if (!data || len != sizeof(*rts_threshold)) {
+		return -EINVAL;
+	}
+
+	return wifi_mgmt_api->set_rts_threshold(dev, *rts_threshold);
+}
+
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_RTS_THRESHOLD, wifi_set_rts_threshold);
 
 #ifdef CONFIG_WIFI_MGMT_RAW_SCAN_RESULTS
 void wifi_mgmt_raise_raw_scan_result_event(struct net_if *iface,

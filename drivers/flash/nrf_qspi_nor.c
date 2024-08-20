@@ -637,7 +637,8 @@ static int configure_chip(const struct device *dev)
 		bool qe_value = (prot_if->writeoc == NRF_QSPI_WRITEOC_PP4IO) ||
 				(prot_if->writeoc == NRF_QSPI_WRITEOC_PP4O)  ||
 				(prot_if->readoc == NRF_QSPI_READOC_READ4IO) ||
-				(prot_if->readoc == NRF_QSPI_READOC_READ4O);
+				(prot_if->readoc == NRF_QSPI_READOC_READ4O)  ||
+				(prot_if->readoc == NRF_QSPI_READOC_READ2IO);
 		uint8_t sr_num = 0;
 		uint8_t qe_mask = 0;
 
@@ -1365,7 +1366,7 @@ void z_vrfy_nrf_qspi_nor_xip_enable(const struct device *dev, bool enable)
 	z_impl_nrf_qspi_nor_xip_enable(dev, enable);
 }
 
-#include <syscalls/nrf_qspi_nor_xip_enable_mrsh.c>
+#include <zephyr/syscalls/nrf_qspi_nor_xip_enable_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
 static struct qspi_nor_data qspi_nor_dev_data = {

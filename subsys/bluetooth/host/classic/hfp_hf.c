@@ -18,12 +18,14 @@
 
 #include <zephyr/bluetooth/classic/rfcomm.h>
 #include <zephyr/bluetooth/classic/hfp_hf.h>
+#include <zephyr/bluetooth/classic/sdp.h>
 
 #include "host/hci_core.h"
 #include "host/conn_internal.h"
 #include "l2cap_br_internal.h"
 #include "rfcomm_internal.h"
 #include "at.h"
+#include "sco_internal.h"
 #include "hfp_internal.h"
 
 #define LOG_LEVEL CONFIG_BT_HFP_HF_LOG_LEVEL
@@ -54,6 +56,73 @@ static const struct {
 	{"roam", 0, 1}, /* HF_ROAM_IND */
 	{"battchg", 0, 5} /* HF_BATTERY_IND */
 };
+
+/* HFP Hands-Free SDP record */
+static struct bt_sdp_attribute hfp_attrs[] = {
+	BT_SDP_NEW_SERVICE,
+	BT_SDP_LIST(
+		BT_SDP_ATTR_SVCLASS_ID_LIST,
+		BT_SDP_TYPE_SIZE_VAR(BT_SDP_SEQ8, 6),
+		BT_SDP_DATA_ELEM_LIST(
+		{
+			BT_SDP_TYPE_SIZE(BT_SDP_UUID16),
+			BT_SDP_ARRAY_16(BT_SDP_HANDSFREE_SVCLASS)
+		},
+		{
+			BT_SDP_TYPE_SIZE(BT_SDP_UUID16),
+			BT_SDP_ARRAY_16(BT_SDP_GENERIC_AUDIO_SVCLASS)
+		}
+		)
+	),
+	BT_SDP_LIST(
+		BT_SDP_ATTR_PROTO_DESC_LIST,
+		BT_SDP_TYPE_SIZE_VAR(BT_SDP_SEQ8, 12),
+		BT_SDP_DATA_ELEM_LIST(
+		{
+			BT_SDP_TYPE_SIZE_VAR(BT_SDP_SEQ8, 3),
+			BT_SDP_DATA_ELEM_LIST(
+			{
+				BT_SDP_TYPE_SIZE(BT_SDP_UUID16),
+				BT_SDP_ARRAY_16(BT_SDP_PROTO_L2CAP)
+			},
+			)
+		},
+		{
+			BT_SDP_TYPE_SIZE_VAR(BT_SDP_SEQ8, 5),
+			BT_SDP_DATA_ELEM_LIST(
+			{
+				BT_SDP_TYPE_SIZE(BT_SDP_UUID16),
+				BT_SDP_ARRAY_16(BT_SDP_PROTO_RFCOMM)
+			},
+			{
+				BT_SDP_TYPE_SIZE(BT_SDP_UINT8),
+				BT_SDP_ARRAY_8(BT_RFCOMM_CHAN_HFP_HF)
+			},
+			)
+		},
+		)
+	),
+	BT_SDP_LIST(
+		BT_SDP_ATTR_PROFILE_DESC_LIST,
+		BT_SDP_TYPE_SIZE_VAR(BT_SDP_SEQ8, 6),
+		BT_SDP_DATA_ELEM_LIST(
+		{
+			BT_SDP_TYPE_SIZE(BT_SDP_UUID16),
+			BT_SDP_ARRAY_16(BT_SDP_HANDSFREE_SVCLASS)
+		},
+		{
+			BT_SDP_TYPE_SIZE(BT_SDP_UINT16),
+			BT_SDP_ARRAY_16(0x0109)
+		},
+		)
+	),
+	/* The values of the “SupportedFeatures” bitmap shall be the same as the
+	 * values of the Bits 0 to 4 of the AT-command AT+BRSF (see Section 5.3).
+	 */
+	BT_SDP_SUPPORTED_FEATURES(BT_HFP_HF_SUPPORTED_FEATURES & 0x1f),
+};
+
+static struct bt_sdp_record hfp_rec = BT_SDP_RECORD(hfp_attrs);
 
 void hf_slc_error(struct at_client *hf_at)
 {
@@ -642,9 +711,9 @@ static void hfp_hf_recv(struct bt_rfcomm_dlc *dlc, struct net_buf *buf)
 	}
 }
 
-static void hfp_hf_sent(struct bt_rfcomm_dlc *dlc, struct net_buf *buf, int err)
+static void hfp_hf_sent(struct bt_rfcomm_dlc *dlc, int err)
 {
-	LOG_DBG("DLC %p sent cb buf %p (err %d)", dlc, buf, err);
+	LOG_DBG("DLC %p sent cb (err %d)", dlc, err);
 }
 
 static int bt_hfp_hf_accept(struct bt_conn *conn, struct bt_rfcomm_dlc **dlc)
@@ -691,6 +760,54 @@ static int bt_hfp_hf_accept(struct bt_conn *conn, struct bt_rfcomm_dlc **dlc)
 	return -ENOMEM;
 }
 
+static void hfp_hf_sco_connected(struct bt_sco_chan *chan)
+{
+	if ((bt_hf != NULL) && (bt_hf->sco_connected)) {
+		bt_hf->sco_connected(chan->sco->sco.acl, chan->sco);
+	}
+}
+
+static void hfp_hf_sco_disconnected(struct bt_sco_chan *chan, uint8_t reason)
+{
+	if ((bt_hf != NULL) && (bt_hf->sco_disconnected)) {
+		bt_hf->sco_disconnected(chan->sco, reason);
+	}
+}
+
+static int bt_hfp_hf_sco_accept(const struct bt_sco_accept_info *info,
+		      struct bt_sco_chan **chan)
+{
+	int i;
+	static struct bt_sco_chan_ops ops = {
+		.connected = hfp_hf_sco_connected,
+		.disconnected = hfp_hf_sco_disconnected,
+	};
+
+	LOG_DBG("conn %p", info->acl);
+
+	for (i = 0; i < ARRAY_SIZE(bt_hfp_hf_pool); i++) {
+		struct bt_hfp_hf *hf = &bt_hfp_hf_pool[i];
+
+		if (NULL == hf->rfcomm_dlc.session) {
+			continue;
+		}
+
+		if (info->acl != hf->rfcomm_dlc.session->br_chan.chan.conn) {
+			continue;
+		}
+
+		hf->chan.ops = &ops;
+
+		*chan = &hf->chan;
+
+		return 0;
+	}
+
+	LOG_ERR("Unable to establish HF connection (%p)", info->acl);
+
+	return -ENOMEM;
+}
+
 static void hfp_hf_init(void)
 {
 	static struct bt_rfcomm_server chan = {
@@ -699,6 +816,15 @@ static void hfp_hf_init(void)
 	};
 
 	bt_rfcomm_server_register(&chan);
+
+	static struct bt_sco_server sco_server = {
+		.sec_level = BT_SECURITY_L0,
+		.accept = bt_hfp_hf_sco_accept,
+	};
+
+	bt_sco_server_register(&sco_server);
+
+	bt_sdp_register_service(&hfp_rec);
 }
 
 int bt_hfp_hf_register(struct bt_hfp_hf_cb *cb)

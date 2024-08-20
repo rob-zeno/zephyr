@@ -537,8 +537,6 @@ static int mcp2515_send(const struct device *dev,
 	uint8_t len;
 	uint8_t tx_frame[MCP2515_FRAME_LEN];
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 	if (frame->dlc > CAN_MAX_DLC) {
 		LOG_ERR("DLC of %d exceeds maximum (%d)",
 			frame->dlc, CAN_MAX_DLC);
@@ -974,7 +972,7 @@ static int mcp2515_init(const struct device *dev)
 	(void)memset(dev_data->filter, 0, sizeof(dev_data->filter));
 	dev_data->old_state = CAN_STATE_ERROR_ACTIVE;
 
-	ret = can_calc_timing(dev, &timing, dev_cfg->common.bus_speed,
+	ret = can_calc_timing(dev, &timing, dev_cfg->common.bitrate,
 			      dev_cfg->common.sample_point);
 	if (ret == -EINVAL) {
 		LOG_ERR("Can't find timing for given param");

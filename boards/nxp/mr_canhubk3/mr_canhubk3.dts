@@ -27,6 +27,7 @@
 		zephyr,shell-uart = &lpuart2;
 		zephyr,flash-controller = &mx25l6433f;
 		zephyr,canbus = &flexcan0;
+		zephyr,display = &ssd1306;
 	};
 
 	aliases {
@@ -39,6 +40,7 @@
 		watchdog0 = &fs26_wdt;
 		/* For pwm test suites */
 		pwm-0 = &emios0_pwm;
+		pwm-1 = &flexio0_pwm;
 		red-pwm-led = &user_led1_red_pwm;
 		green-pwm-led = &user_led1_green_pwm;
 		blue-pwm-led = &user_led1_blue_pwm;
@@ -59,6 +61,30 @@
 		user_led1_red: user_led1_red {
 			gpios = <&gpioe_l 14 GPIO_ACTIVE_LOW>;
 			label = "User RGB LED1 RED";
+		};
+		can_led0: can_led0 {
+			gpios = <&gpioc_h 2 GPIO_ACTIVE_LOW>;
+			label = "CAN LED0";
+		};
+		can_led1: can_led1 {
+			gpios = <&gpioe_l 5 GPIO_ACTIVE_LOW>;
+			label = "CAN LED1";
+		};
+		can_led2: can_led2 {
+			gpios = <&gpiod_h 4 GPIO_ACTIVE_LOW>;
+			label = "CAN LED2";
+		};
+		can_led3: can_led3 {
+			gpios = <&gpiob_h 8 GPIO_ACTIVE_LOW>;
+			label = "CAN LED3";
+		};
+		can_led4: can_led4 {
+			gpios = <&gpiob_h 10 GPIO_ACTIVE_LOW>;
+			label = "CAN LED4";
+		};
+		can_led5: can_led5 {
+			gpios = <&gpiod_h 15 GPIO_ACTIVE_LOW>;
+			label = "CAN LED5";
 		};
 	};
 
@@ -201,7 +227,11 @@
 	status = "okay";
 };
 
-/* Enable gpio to control the CAN transceivers */
+/* Enable gpio to control the CAN transceivers and LEDs */
+
+&gpiob_h {
+	status = "okay";
+};
 
 &gpioc_h {
 	status = "okay";
@@ -329,8 +359,6 @@
 	pinctrl-0 = <&flexcan0_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy0>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 	status = "okay";
 };
 
@@ -338,46 +366,52 @@
 	pinctrl-0 = <&flexcan1_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy1>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 };
 
 &flexcan2 {
 	pinctrl-0 = <&flexcan2_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy2>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 };
 
 &flexcan3 {
 	pinctrl-0 = <&flexcan3_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy3>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 };
 
 &flexcan4 {
 	pinctrl-0 = <&flexcan4_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy4>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 };
 
 &flexcan5 {
 	pinctrl-0 = <&flexcan5_default>;
 	pinctrl-names = "default";
 	phys = <&can_phy5>;
-	bus-speed = <125000>;
-	bus-speed-data = <1000000>;
 };
 
 &lpi2c0 {
 	pinctrl-0 = <&lpi2c0_default>;
 	pinctrl-names = "default";
 	clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+
+	ssd1306: ssd1306@3c {
+		compatible = "solomon,ssd1306fb";
+		reg = <0x3c>;
+		width = <128>;
+		height = <32>;
+		segment-offset = <0>;
+		page-offset = <0>;
+		display-offset = <0>;
+		multiplex-ratio = <31>;
+		segment-remap;
+		com-invdir;
+		com-sequential;
+		prechargep = <0x22>;
+	};
 };
 
 &lpi2c1 {
@@ -581,6 +615,27 @@
 			polarity = "ACTIVE_LOW";
 		};
 	};
+};
+
+&flexio0 {
+	status = "okay";
+
+	flexio0_pwm: flexio0_pwm {
+		pinctrl-0 = <&flexio0_pwm_default>;
+		pinctrl-names = "default";
+		status = "okay";
+
+		pwm_0 {
+			pin-id = <19>;
+			prescaler = <1>;
+		};
+
+		pwm_1 {
+			pin-id = <11>;
+			prescaler = <1>;
+		};
+	};
+
 };
 
 &lcu1 {

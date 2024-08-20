@@ -30,22 +30,16 @@ include(extensions)
 # Merge in variables from other sources (e.g. sysbuild)
 zephyr_get(FILE_SUFFIX SYSBUILD GLOBAL)
 
-zephyr_get(APPLICATION_CONFIG_DIR)
-if(DEFINED APPLICATION_CONFIG_DIR)
-  string(CONFIGURE ${APPLICATION_CONFIG_DIR} APPLICATION_CONFIG_DIR)
-  if(NOT IS_ABSOLUTE ${APPLICATION_CONFIG_DIR})
-    get_filename_component(APPLICATION_CONFIG_DIR ${APPLICATION_CONFIG_DIR} ABSOLUTE)
-  endif()
-else()
-  # Application config dir is not set, so we default to the  application
-  # source directory as configuration directory.
-  set(APPLICATION_CONFIG_DIR ${APPLICATION_SOURCE_DIR})
-endif()
+zephyr_get(APPLICATION_CONFIG_DIR SYSBUILD GLOBAL)
+zephyr_file(APPLICATION_ROOT APPLICATION_CONFIG_DIR)
+set_ifndef(APPLICATION_CONFIG_DIR ${APPLICATION_SOURCE_DIR})
+string(CONFIGURE ${APPLICATION_CONFIG_DIR} APPLICATION_CONFIG_DIR)
 
 zephyr_get(CONF_FILE SYSBUILD LOCAL)
 if(NOT DEFINED CONF_FILE)
   zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR} KCONF CONF_FILE NAMES "prj.conf" SUFFIX ${FILE_SUFFIX} REQUIRED)
-  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/boards KCONF CONF_FILE)
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/socs KCONF CONF_FILE QUALIFIERS SUFFIX ${FILE_SUFFIX})
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/boards KCONF CONF_FILE SUFFIX ${FILE_SUFFIX})
 else()
   string(CONFIGURE "${CONF_FILE}" CONF_FILE_EXPANDED)
   string(REPLACE " " ";" CONF_FILE_AS_LIST "${CONF_FILE_EXPANDED}")
@@ -62,7 +56,7 @@ else()
   endif()
 endif()
 
-set(APPLICATION_CONFIG_DIR ${APPLICATION_CONFIG_DIR} CACHE INTERNAL "The application configuration folder" FORCE)
+set(APPLICATION_CONFIG_DIR ${APPLICATION_CONFIG_DIR} CACHE PATH "The application configuration folder" FORCE)
 set(CONF_FILE ${CONF_FILE} CACHE STRING "If desired, you can build the application using\
 the configuration settings specified in an alternate .conf file using this parameter. \
 These settings will override the settings in the application’s .config file or its default .conf file.\
@@ -73,19 +67,24 @@ To change CONF_FILE, use the CONF_FILE variable." ${CONF_FILE_FORCE_CACHE})
 # The CONF_FILE variable is now set to its final value.
 zephyr_boilerplate_watch(CONF_FILE)
 
-zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/boards DTS APP_BOARD_DTS SUFFIX ${FILE_SUFFIX})
-
 zephyr_get(DTC_OVERLAY_FILE SYSBUILD LOCAL)
-if(NOT DEFINED DTC_OVERLAY_FILE)
-  zephyr_build_string(board_overlay_strings
-                      BOARD ${BOARD}
-                      BOARD_IDENTIFIER ${BOARD_IDENTIFIER}
-                      MERGE
-  )
-  list(TRANSFORM board_overlay_strings APPEND ".overlay")
 
-  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR} DTS DTC_OVERLAY_FILE
-              NAMES "${APP_BOARD_DTS};${board_overlay_strings};app.overlay" SUFFIX ${FILE_SUFFIX})
+# If DTC_OVERLAY_FILE is not set by the user, look for SoC and board-specific overlays
+# in the 'boards' and `soc` configuration subdirectories.
+if(NOT DEFINED DTC_OVERLAY_FILE)
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/socs DTS DTC_OVERLAY_FILE QUALIFIERS SUFFIX ${FILE_SUFFIX})
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/boards DTS DTC_OVERLAY_FILE SUFFIX ${FILE_SUFFIX})
+endif()
+
+# If still not found, search for other overlays in the configuration directory.
+if(NOT DEFINED DTC_OVERLAY_FILE)
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR} DTS DTC_OVERLAY_FILE)
+
+  if(NOT DEFINED DTC_OVERLAY_FILE)
+    zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR} DTS DTC_OVERLAY_FILE
+                NAMES "app.overlay" SUFFIX ${FILE_SUFFIX}
+    )
+  endif()
 endif()
 
 set(DTC_OVERLAY_FILE ${DTC_OVERLAY_FILE} CACHE STRING "If desired, you can \

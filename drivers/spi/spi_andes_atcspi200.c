@@ -639,14 +639,16 @@ static int transceive(const struct device *dev,
 		if ((data->dma_tx.dma_dev != NULL) && (data->dma_rx.dma_dev != NULL)) {
 			error = spi_transfer_dma(dev);
 			if (error != 0) {
-				return error;
+				spi_context_cs_control(ctx, false);
+				goto out;
 			}
 		} else {
 #endif /* CONFIG_ANDES_SPI_DMA_MODE */
 
 			error = spi_transfer(dev);
 			if (error != 0) {
-				return error;
+				spi_context_cs_control(ctx, false);
+				goto out;
 			}
 
 #ifdef CONFIG_ANDES_SPI_DMA_MODE
@@ -655,7 +657,7 @@ static int transceive(const struct device *dev,
 		error = spi_context_wait_for_completion(ctx);
 		spi_context_cs_control(ctx, false);
 	}
-
+out:
 	spi_context_release(ctx, error);
 
 	return error;
@@ -887,7 +889,7 @@ static void spi_atcspi200_irq_handler(void *arg)
 		.channel_direction = ANDES_DMA_CONFIG_DIRECTION(		\
 				     DMA_CHANNEL_CONFIG(index, dir)),		\
 		.complete_callback_en = 0,					\
-		.error_callback_en = 0,						\
+		.error_callback_dis = 0,					\
 		.source_data_size =						\
 			ANDES_DMA_CONFIG_##src_dev##_DATA_SIZE(			\
 					DMA_CHANNEL_CONFIG(index, dir)		\

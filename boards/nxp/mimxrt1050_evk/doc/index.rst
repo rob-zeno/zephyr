@@ -17,9 +17,6 @@ and camera sensors. As with other i.MX processors, i.MX RT1050 also has rich
 audio and video features, including LCD display, basic 2D graphics, camera
 interface, SPDIF, and I2S audio interface.
 
-The following document refers to the discontinued MIMXRT1050-EVK board. For the
-MIMXRT1050-EVKB board, refer to `Board Revisions`_ section.
-
 .. image:: mimxrt1050_evk.jpg
    :align: center
    :alt: MIMXRT1050-EVK
@@ -119,7 +116,9 @@ already supported, which can also be re-used on this mimxrt1050_evk board:
 +-----------+------------+-------------------------------------+
 | SYSTICK   | on-chip    | systick                             |
 +-----------+------------+-------------------------------------+
-| DISPLAY   | on-chip    | display                             |
+| DISPLAY   | on-chip    | eLCDIF. Tested with                 |
+|           |            | :ref:`rk043fn02h_ct`, and           |
+|           |            | :ref:`rk043fn66hs_ctg` shields      |
 +-----------+------------+-------------------------------------+
 | GPIO      | on-chip    | gpio                                |
 +-----------+------------+-------------------------------------+
@@ -145,9 +144,8 @@ already supported, which can also be re-used on this mimxrt1050_evk board:
 | FLEXSPI   | on-chip    | flash programming                   |
 +-----------+------------+-------------------------------------+
 
-The default configuration can be found in the defconfig file:
-
-	:zephyr_file:`boards/nxp/mimxrt1050_evk/mimxrt1050_evk_defconfig`
+The default configuration can be found in
+:zephyr_file:`boards/nxp/mimxrt1050_evk/mimxrt1050_evk_defconfig`
 
 Other hardware features are not currently supported by the port.
 
@@ -310,57 +308,43 @@ Only USB device function is supported in Zephyr at the moment.
 Programming and Debugging
 *************************
 
-Build and flash applications as usual (see :ref:`build_an_application` and
-:ref:`application_run` for more details).
+.. note::
+   Newer revisions of this board use :ref:`lpc-link2-onboard-debug-probe`,
+   while older revisions use the :ref:`opensda-onboard-debug-probe`.
+   Schematic revisions A/A1 use the K20 OpenSDA probe, and B/B1 use the
+   LPC-Link2 LPC4322 probe.
 
-Configuring a Debug Probe
-=========================
+This board supports 3 debug host tools. Please install your preferred host
+tool, then follow the instructions in `Configuring a Debug Probe
+(Schematic A/A1)`_ or `Configuring a Debug Probe (Schematic B/B1)`_,
+depending on board schematic revision to configure the board appropriately.
 
-A debug probe is used for both flashing and debugging the board. This board is
-configured by default to use the :ref:`opensda-daplink-onboard-debug-probe`,
-however the :ref:`pyocd-debug-host-tools` do not yet support programming the
-external flashes on this board so you must reconfigure the board for one of the
-following debug probes instead.
+* :ref:`linkserver-debug-host-tools` (Default, NXP Supported)
+* :ref:`jlink-debug-host-tools` (NXP Supported)
+* :ref:`pyocd-debug-host-tools` (Not supported by NXP)
 
-Using LinkServer
-----------------
+Once the host tool and board are configured, build and flash applications
+as usual (see :ref:`build_an_application` and :ref:`application_run` for more
+details).
 
-Install the :ref:`linkserver-debug-host-tools` and make sure they are in your
-search path.  LinkServer works with the default CMSIS-DAP firmware included in
-the on-board debugger.
+Configuring a Debug Probe (Schematic A/A1)
+==========================================
 
-Linkserver is the default runner. You may also se the ``-r linkserver`` option
-with West to use the LinkServer runner.
+For the RT1050 Schematic Rev A, J32/J33 are the SWD isolation jumpers, SW4 is
+the reset button, and J21 is the 20 pin JTAG/SWD header.
 
-.. code-block:: console
+.. include:: ../../common/opensda-debug.rst
+   :start-after: nxp-opensda-probes
 
-   west flash
-   west debug
 
-JLink (on-board): :ref:`opensda-jlink-onboard-debug-probe`
-----------------------------------------------------------
+Configuring a Debug Probe (Schematic B/B1)
+==========================================
 
-Install the :ref:`jlink-debug-host-tools` and make sure they are in your search
-path.
+For the RT1050 Schematic Rev B, J47/J48 are the SWD isolation jumpers, J42 is
+the DFU mode jumper, and J21 is the 20 pin JTAG/SWD header.
 
-Follow the instructions in :ref:`opensda-jlink-onboard-debug-probe` to program
-the `OpenSDA J-Link MIMXRT1050-EVK-Hyperflash Firmware`_. Check that jumpers
-J32 and J33 are **on** (they are on by default when boards ship from the
-factory) to ensure SWD signals are connected to the OpenSDA microcontroller.
-
-Follow the instructions in `Enable QSPI flash support in SEGGER JLink`_
-in order to support your EVK if you have modified it to boot from QSPI NOR
-flash as specified by NXP AN12108.
-
-External JLink :ref:`jlink-external-debug-probe`
-------------------------------------------------
-
-Install the :ref:`jlink-debug-host-tools` and make sure they are in your search
-path.
-
-Attach a J-Link 20-pin connector to J21. Check that jumpers J32 and J33 are
-**off** (they are on by default when boards ship from the factory) to ensure
-SWD signals are disconnected from the OpenSDA microcontroller.
+.. include:: ../../common/rt1xxx-lpclink2-debug.rst
+   :start-after: rt1xxx-lpclink2-probes
 
 Configuring a Console
 =====================
@@ -487,13 +471,3 @@ Current Zephyr build supports the new MIMXRT1050-EVKB
 
 .. _Enable QSPI flash support in SEGGER JLink:
    https://wiki.segger.com/i.MXRT1050#QSPI_flash
-
-Experimental ENET Driver
-========================
-
-Current default ethernet driver is eth_mcux, with binding `nxp,kinetis-ethernet`. There is a new
-driver with binding `nxp,enet`, which is experimental and undergoing development, but will have
-enhanced capability, such as not hardcoding code for only one phy in the driver like eth_mcux.
-
-To build for this EVK with the new driver, include the experimental overlay to west build with
-the option `-DEXTRA_DTC_OVERLAY_FILE=nxp,enet-experimental.overlay`.

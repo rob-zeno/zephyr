@@ -29,11 +29,11 @@ static struct k_spinlock pthread_key_lock;
  * perspective of the application). With a linear space, this means that
  * the theoretical pthread_key_t range is [0,2147483647].
  */
-BUILD_ASSERT(CONFIG_MAX_PTHREAD_KEY_COUNT < PTHREAD_OBJ_MASK_INIT,
+BUILD_ASSERT(CONFIG_POSIX_THREAD_KEYS_MAX < PTHREAD_OBJ_MASK_INIT,
 	     "CONFIG_MAX_PTHREAD_KEY_COUNT is too high");
 
-static pthread_key_obj posix_key_pool[CONFIG_MAX_PTHREAD_KEY_COUNT];
-SYS_BITARRAY_DEFINE_STATIC(posix_key_bitarray, CONFIG_MAX_PTHREAD_KEY_COUNT);
+static pthread_key_obj posix_key_pool[CONFIG_POSIX_THREAD_KEYS_MAX];
+SYS_BITARRAY_DEFINE_STATIC(posix_key_bitarray, CONFIG_POSIX_THREAD_KEYS_MAX);
 
 static inline size_t posix_key_to_offset(pthread_key_obj *k)
 {
@@ -200,18 +200,18 @@ int pthread_setspecific(pthread_key_t key, const void *value)
 
 	SYS_SLIST_FOR_EACH_NODE(&(thread->key_list), node_l) {
 
-			thread_spec_data = (pthread_thread_data *)node_l;
+		thread_spec_data = (pthread_thread_data *)node_l;
 
-			if (thread_spec_data->key == key_obj) {
+		if (thread_spec_data->key == key_obj) {
 
-				/* Key is already present so
-				 * associate thread specific data
-				 */
-				thread_spec_data->spec_data = (void *)value;
-				LOG_DBG("Paired key %x to value %p for thread %x", key, value,
-					pthread_self());
-				goto out;
-			}
+			/* Key is already present so
+			 * associate thread specific data
+			 */
+			thread_spec_data->spec_data = (void *)value;
+			LOG_DBG("Paired key %x to value %p for thread %x", key, value,
+				pthread_self());
+			goto out;
+		}
 	}
 
 	if (node_l == NULL) {

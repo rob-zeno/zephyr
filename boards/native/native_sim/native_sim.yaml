@@ -11,8 +11,10 @@ toolchain:
 supported:
   - can
   - counter
+  - dma
   - eeprom
   - netif:eth
+  - mspi
   - usb_device
   - adc
   - i2c

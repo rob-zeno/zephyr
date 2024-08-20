@@ -411,12 +411,15 @@ static enum net_verdict ipv6_forward_mcast_packet(struct net_pkt *pkt,
 #if defined(CONFIG_NET_ROUTE_MCAST)
 	int routed;
 
-	/* check if routing loop could be created or if the destination is of
-	 * interface local scope or if from link local source
+	/* Continue processing without forwarding if:
+	 *   1. routing loop could be created
+	 *   2. the destination is of interface local scope
+	 *   3. is from link local source
+	 *   4. hop limit is or would become zero
 	 */
-	if (net_ipv6_is_addr_mcast((struct in6_addr *)hdr->src)  ||
-	      net_ipv6_is_addr_mcast_iface((struct in6_addr *)hdr->dst) ||
-	       net_ipv6_is_ll_addr((struct in6_addr *)hdr->src)) {
+	if (net_ipv6_is_addr_mcast((struct in6_addr *)hdr->src) ||
+	    net_ipv6_is_addr_mcast_iface((struct in6_addr *)hdr->dst) ||
+	    net_ipv6_is_ll_addr((struct in6_addr *)hdr->src) || hdr->hop_limit <= 1) {
 		return NET_CONTINUE;
 	}
 
@@ -466,7 +469,7 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 	union net_ip_header ip;
 	int pkt_len;
 
-#if defined(CONFIG_NET_L2_VIRTUAL)
+#if defined(CONFIG_NET_L2_IPIP)
 	struct net_pkt_cursor hdr_start;
 
 	net_pkt_cursor_backup(pkt, &hdr_start);
@@ -505,6 +508,8 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 	}
 
 	if (!is_loopback) {
+		struct net_if_addr *ifaddr;
+
 		if (net_ipv6_is_addr_loopback((struct in6_addr *)hdr->dst) ||
 		    net_ipv6_is_addr_loopback((struct in6_addr *)hdr->src)) {
 			NET_DBG("DROP: ::1 packet");
@@ -521,7 +526,12 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 			goto drop;
 		}
 
-		if (net_ipv6_is_my_addr((struct in6_addr *)hdr->src)) {
+		/* We need to pass the packet through in case our address is
+		 * tentative, as receiving a packet with a tentative address as
+		 * source means that duplicate address has been detected.
+		 */
+		ifaddr = net_if_ipv6_addr_lookup((struct in6_addr *)hdr->src, NULL);
+		if (ifaddr != NULL && ifaddr->addr_state != NET_ADDR_TENTATIVE) {
 			NET_DBG("DROP: src addr is %s", "mine");
 			goto drop;
 		}
@@ -549,7 +559,7 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 	}
 
 	if (IS_ENABLED(CONFIG_NET_ROUTE_MCAST) &&
-		net_ipv6_is_addr_mcast((struct in6_addr *)hdr->dst)) {
+		net_ipv6_is_addr_mcast((struct in6_addr *)hdr->dst) && !net_pkt_forwarding(pkt)) {
 		/* If the packet is a multicast packet and multicast routing
 		 * is activated, we give the packet to the routing engine.
 		 *
@@ -725,20 +735,28 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 			verdict = NET_OK;
 		}
 		break;
-#if defined(CONFIG_NET_L2_VIRTUAL)
+
+#if defined(CONFIG_NET_L2_IPIP)
 	case IPPROTO_IPV6:
 	case IPPROTO_IPIP: {
-		struct net_addr remote_addr;
+		struct sockaddr_in6 remote_addr = { 0 };
+		struct net_if *tunnel_iface;
 
-		remote_addr.family = AF_INET6;
-		net_ipv6_addr_copy_raw((uint8_t *)&remote_addr.in6_addr, hdr->src);
+		remote_addr.sin6_family = AF_INET6;
+		net_ipv6_addr_copy_raw((uint8_t *)&remote_addr.sin6_addr, hdr->src);
+
+		net_pkt_set_remote_address(pkt, (struct sockaddr *)&remote_addr,
+					   sizeof(struct sockaddr_in6));
 
 		/* Get rid of the old IP header */
 		net_pkt_cursor_restore(pkt, &hdr_start);
 		net_pkt_pull(pkt, net_pkt_ip_hdr_len(pkt) +
 			     net_pkt_ipv6_ext_len(pkt));
 
-		return net_virtual_input(pkt_iface, &remote_addr, pkt);
+		tunnel_iface = net_ipip_get_virtual_interface(net_pkt_iface(pkt));
+		if (tunnel_iface != NULL && net_if_l2(tunnel_iface)->recv != NULL) {
+			return net_if_l2(tunnel_iface)->recv(net_pkt_iface(pkt), pkt);
+		}
 	}
 #endif
 	}

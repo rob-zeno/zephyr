@@ -187,14 +187,9 @@ For more information about memory mapping see the
 `i.MX 8M Applications Processor Reference Manual`_  (section 2.1.2 and 2.1.3)
 
 At compilation time you have to choose which RAM will be used. This
-configuration is done in the file ``boards/arm/mimx8mm_evk/mimx8mm_evk.dts``
+configuration is done in
+:zephyr_file:`boards/phytec/mimx8mm_phyboard_polis/mimx8mm_phyboard_polis_mimx8mm6_m4.dts`
 with "zephyr,flash" (when CONFIG_XIP=y) and "zephyr,sram" properties.
-The available configurations are:
-
-If you don't want to use the TCM memory area, you can either overwrite the
-boards devicetree in your program or edit the board devicetree located here:
-
-:zephyr_file:`boards/phytec/mimx8mm_phyboard_polis/mimx8mm_phyboard_polis_mimx8mm6_m4.dts`.
 
 You also have to set XIP=n or edit the boards defconfig file, if you don't want
 the TCM memory area to be used. You can find the defconf file here:
@@ -225,10 +220,10 @@ This should output something like this:
 
 .. code-block:: console
 
-   u-boot=> tftp 0x48000000 192.168.3.10:zyphr.bin
+   u-boot=> tftp 0x48000000 192.168.3.10:zephyr.bin
    Using ethernet@30be0000 device
    TFTP from server 192.168.3.10; our IP address is 192.168.3.11
-   Filename 'zepyhr.bin'.
+   Filename 'zephyr.bin'.
    Load address: 0x48000000
    Loading: ##
             2 KiB/s
@@ -254,7 +249,7 @@ And finaly starting the M4-Core at the right memory address:
 Starting the M4-Core via remoteproc
 ===================================
 
-Copy the zepyhr.elf to ``/lib/firmware`` on the target. Maybe a Zephyr sample
+Copy the zephyr.elf to ``/lib/firmware`` on the target. Maybe a Zephyr sample
 will be included in a future BSP release.
 
 .. note::
@@ -270,12 +265,12 @@ To load and start a firmware use this commands:
 
 .. code-block:: console
 
-   target$ echo /lib/firmware/zepyhr.elf > /sys/class/remoteproc/remoteproc0/firmware
+   target$ echo /lib/firmware/zephyr.elf > /sys/class/remoteproc/remoteproc0/firmware
    target$ echo start > /sys/class/remoteproc/remoteproc0/state
    [   90.700611] remoteproc remoteproc0: powering up imx-rproc
-   [   90.706114] remoteproc remoteproc0: Direct firmware load for /lib/firmware/zepyhr.elf failed w2
-   [   90.716571] remoteproc remoteproc0: Falling back to sysfs fallback for: /lib/firmware/zepyhr.elf
-   [   90.739280] remoteproc remoteproc0: Booting fw image /lib/firmware/zepyhr.elf, size 599356
+   [   90.706114] remoteproc remoteproc0: Direct firmware load for /lib/firmware/zephyr.elf failed w2
+   [   90.716571] remoteproc remoteproc0: Falling back to sysfs fallback for: /lib/firmware/zephyr.elf
+   [   90.739280] remoteproc remoteproc0: Booting fw image /lib/firmware/zephyr.elf, size 599356
    [   90.804448] remoteproc remoteproc0: remote processor imx-rproc is now up
 
 

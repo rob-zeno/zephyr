@@ -109,9 +109,8 @@ already supported, which can also be re-used on this mimxrt685_evk board:
 | FLEXSPI   | on-chip    | flash programming                   |
 +-----------+------------+-------------------------------------+
 
-The default configuration can be found in the defconfig file:
-
-	:zephyr_file:`boards/nxp/mimxrt685_evk/mimxrt685_evk_defconfig`
+The default configuration can be found in
+:zephyr_file:`boards/nxp/mimxrt685_evk/mimxrt685_evk_mimxrt685s_cm33_defconfig`
 
 Other hardware features are not currently supported by the port.
 
@@ -291,7 +290,7 @@ Here is an example for the :ref:`hello_world` application. This example uses the
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
-   :board: mimxrt685_evk
+   :board: mimxrt685_evk/mimxrt685s/cm33
    :goals: flash
 
 Open a serial terminal, reset the board (press the RESET button), and you should
@@ -310,7 +309,7 @@ Here is an example for the :ref:`hello_world` application. This example uses the
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
-   :board: mimxrt685_evk
+   :board: mimxrt685_evk/mimxrt685s/cm33
    :goals: debug
 
 Open a serial terminal, step through the application in your debugger, and you
@@ -364,7 +363,7 @@ steps:
    https://www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/i-mx-rt-crossover-mcus/i-mx-rt600-crossover-mcu-with-arm-cortex-m33-and-dsp-cores:i.MX-RT600
 
 .. _i.MX RT685 Datasheet:
-   https://www.nxp.com/docs/en/data-sheet/DS-RT600.pdf
+   https://www.nxp.com/docs/en/data-sheet/RT600.pdf
 
 .. _i.MX RT685 Reference Manual:
    https://www.nxp.com/webapp/Download?colCode=UM11147

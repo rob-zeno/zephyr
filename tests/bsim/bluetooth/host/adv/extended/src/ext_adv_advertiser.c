@@ -45,7 +45,7 @@ static void create_ext_adv_set(struct bt_le_ext_adv **adv, bool connectable)
 	printk("Creating extended advertising set...");
 
 	const struct bt_le_adv_param *adv_param = connectable ?
-		BT_LE_EXT_ADV_CONN_NAME : BT_LE_EXT_ADV_NCONN_NAME;
+		BT_LE_EXT_ADV_CONN : BT_LE_EXT_ADV_NCONN;
 
 	err = bt_le_ext_adv_create(adv_param, NULL, adv);
 	if (err) {
@@ -260,7 +260,7 @@ static const struct bst_test_instance ext_adv_advertiser[] = {
 		.test_id = "ext_adv_advertiser",
 		.test_descr = "Basic extended advertising test. "
 			      "Will just start extended advertising.",
-		.test_post_init_f = test_init,
+		.test_pre_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = main_ext_adv_advertiser
 	},
@@ -268,7 +268,7 @@ static const struct bst_test_instance ext_adv_advertiser[] = {
 		.test_id = "ext_adv_conn_advertiser",
 		.test_descr = "Basic connectable extended advertising test. "
 			      "Starts extended advertising, and restarts it after disconnecting",
-		.test_post_init_f = test_init,
+		.test_pre_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = main_ext_conn_adv_advertiser
 	},
@@ -277,7 +277,7 @@ static const struct bst_test_instance ext_adv_advertiser[] = {
 		.test_descr = "Basic connectable extended advertising test. "
 			      "Starts extended advertising, and restarts it after disconnecting, "
 			      "repeated over 5 times",
-		.test_post_init_f = test_init,
+		.test_pre_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = main_ext_conn_adv_advertiser_x5
 	},

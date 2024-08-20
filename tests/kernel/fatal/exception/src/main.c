@@ -50,7 +50,7 @@ volatile int rv;
 
 static ZTEST_DMEM volatile int expected_reason = -1;
 
-void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *pEsf)
+void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *pEsf)
 {
 	TC_PRINT("Caught system error -- reason %d\n", reason);
 
@@ -225,7 +225,7 @@ static inline void z_vrfy_blow_up_priv_stack(void)
 {
 	z_impl_blow_up_priv_stack();
 }
-#include <syscalls/blow_up_priv_stack_mrsh.c>
+#include <zephyr/syscalls/blow_up_priv_stack_mrsh.c>
 
 #endif /* CONFIG_USERSPACE */
 #endif /* CONFIG_STACK_SENTINEL */
@@ -465,7 +465,7 @@ static void *fatal_setup(void)
 
 	obj_size = K_THREAD_STACK_SIZEOF(overflow_stack);
 #if defined(CONFIG_USERSPACE)
-	obj_size = Z_THREAD_STACK_SIZE_ADJUST(obj_size);
+	obj_size = K_THREAD_STACK_LEN(obj_size);
 #endif
 
 	k_mem_region_align(&pin_addr, &pin_size,
@@ -477,7 +477,7 @@ static void *fatal_setup(void)
 
 	obj_size = K_THREAD_STACK_SIZEOF(alt_stack);
 #if defined(CONFIG_USERSPACE)
-	obj_size = Z_THREAD_STACK_SIZE_ADJUST(obj_size);
+	obj_size = K_THREAD_STACK_LEN(obj_size);
 #endif
 
 	k_mem_region_align(&pin_addr, &pin_size,

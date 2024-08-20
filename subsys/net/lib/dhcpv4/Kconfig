@@ -9,6 +9,7 @@ config NET_DHCPV4
 	bool "DHCPv4 client"
 	select NET_MGMT
 	select NET_MGMT_EVENT
+	select NET_MGMT_EVENT_INFO if NET_IPV4_ACD
 	depends on NET_IPV4 && NET_UDP
 
 if NET_DHCPV4
@@ -140,12 +141,25 @@ config NET_DHCPV4_SERVER_ADDR_DECLINE_TIME
 	  case it runs out of free addresses to assign.
 
 config NET_DHCPV4_SERVER_ICMP_PROBE_TIMEOUT
-	int "Timeout for ICMP probes sent by the server (miliseconds)"
+	int "Timeout for ICMP probes sent by the server (milliseconds)"
 	range 0 60000
 	default 1000
 	help
 	  DHCPv4 server will probe the offered IP address (send ICMP echo
 	  request) and wait for the time specific by this config before offering
 	  the address. If set to 0, ICMP probing will be disabled.
+
+config NET_DHCPV4_SERVER_NAK_UNRECOGNIZED_REQUESTS
+	bool "Reply with NAK for DHCP Requests from clients we do not recognize"
+	default y
+	help
+	  Zephyr's DHCPv4 server does not implement persistent storage of address
+	  leases. As a result, all leases are lost on reboot, which can cause
+	  delays with clients starting in INIT-REBOOT state and thus sending
+	  (potentially several) Requests before attempting full Discover-Request
+	  procedure. Enabling this config will violate the RFC in this regard, as
+	  instead of staying silent for unrecognized Request messages, the server
+	  will send a NAK, informing the client it should proceed with a full
+	  procedure.
 
 endif # NET_DHCPV4_SERVER

@@ -12,6 +12,7 @@
 #include <zephyr/drivers/interrupt_controller/intc_esp32.h>
 #include <soc.h>
 #include <ksched.h>
+#include <ipi.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/spinlock.h>
@@ -88,7 +89,7 @@ static void appcpu_entry2(void)
 	 * later.
 	 */
 	__asm__ volatile("rsr.PS %0" : "=r"(ps));
-	ps &= ~(PS_EXCM_MASK | PS_INTLEVEL_MASK);
+	ps &= ~(XCHAL_PS_EXCM_MASK | XCHAL_PS_INTLEVEL_MASK);
 	__asm__ volatile("wsr.PS %0" : : "r"(ps));
 
 	ie = 0;
@@ -243,7 +244,7 @@ IRAM_ATTR static void esp_crosscore_isr(void *arg)
 	}
 }
 
-void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
+void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz,
 		    arch_cpustart_t fn, void *arg)
 {
 	volatile struct cpustart_rec sr;
@@ -258,12 +259,12 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	sr.cpu = cpu_num;
 	sr.fn = fn;
-	sr.stack_top = Z_KERNEL_STACK_BUFFER(stack) + sz;
+	sr.stack_top = K_KERNEL_STACK_BUFFER(stack) + sz;
 	sr.arg = arg;
 	sr.vecbase = vb;
 	sr.alive = &alive_flag;
 
-	appcpu_top = Z_KERNEL_STACK_BUFFER(stack) + sz;
+	appcpu_top = K_KERNEL_STACK_BUFFER(stack) + sz;
 
 	start_rec = &sr;
 
@@ -290,15 +291,22 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	smp_log("ESP32: APPCPU initialized");
 }
 
-void arch_sched_ipi(void)
+void arch_sched_directed_ipi(uint32_t cpu_bitmap)
 {
 	const int core_id = esp_core_id();
+
+	ARG_UNUSED(cpu_bitmap);
 
 	if (core_id == 0) {
 		DPORT_WRITE_PERI_REG(DPORT_CPU_INTR_FROM_CPU_0_REG, DPORT_CPU_INTR_FROM_CPU_0);
 	} else {
 		DPORT_WRITE_PERI_REG(DPORT_CPU_INTR_FROM_CPU_1_REG, DPORT_CPU_INTR_FROM_CPU_1);
 	}
+}
+
+void arch_sched_broadcast_ipi(void)
+{
+	arch_sched_directed_ipi(IPI_ALL_CPUS_MASK);
 }
 
 IRAM_ATTR bool arch_cpu_active(int cpu_num)

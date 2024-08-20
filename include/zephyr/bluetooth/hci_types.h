@@ -22,20 +22,31 @@
 extern "C" {
 #endif
 
+/* Bluetooth spec v5.4 Vol 4, Part A Table 2.1: HCI packet indicators
+ * The following definitions are intended for use with the UART Transport Layer and
+ * may be reused with other transport layers if desired.
+ */
+#define BT_HCI_H4_NONE                  0x00    /* None of the known packet types */
+#define BT_HCI_H4_CMD                   0x01    /* HCI Command packet */
+#define BT_HCI_H4_ACL                   0x02    /* HCI ACL Data packet */
+#define BT_HCI_H4_SCO                   0x03    /* HCI Synchronous Data packet */
+#define BT_HCI_H4_EVT                   0x04    /* HCI Event packet */
+#define BT_HCI_H4_ISO                   0x05    /* HCI ISO Data packet */
+
 /* Special own address types for LL privacy (used in adv & scan parameters) */
-#define BT_HCI_OWN_ADDR_RPA_OR_PUBLIC  0x02
-#define BT_HCI_OWN_ADDR_RPA_OR_RANDOM  0x03
-#define BT_HCI_OWN_ADDR_RPA_MASK       0x02
+#define BT_HCI_OWN_ADDR_RPA_OR_PUBLIC   0x02
+#define BT_HCI_OWN_ADDR_RPA_OR_RANDOM   0x03
+#define BT_HCI_OWN_ADDR_RPA_MASK        0x02
 
 #define BT_HCI_PEER_ADDR_RPA_UNRESOLVED 0xfe
 #define BT_HCI_PEER_ADDR_ANONYMOUS      0xff
 
-#define BT_ENC_KEY_SIZE_MIN                     0x07
-#define BT_ENC_KEY_SIZE_MAX                     0x10
+#define BT_ENC_KEY_SIZE_MIN             0x07
+#define BT_ENC_KEY_SIZE_MAX             0x10
 
-#define BT_HCI_ADV_HANDLE_INVALID 0xff
-#define BT_HCI_SYNC_HANDLE_INVALID 0xffff
-#define BT_HCI_PAWR_SUBEVENT_MAX 128
+#define BT_HCI_ADV_HANDLE_INVALID       0xff
+#define BT_HCI_SYNC_HANDLE_INVALID      0xffff
+#define BT_HCI_PAWR_SUBEVENT_MAX        128
 
 /* Bluetooth spec v5.4 Vol 4, Part E - 5.4.3 HCI Synchronous Data Packets */
 struct bt_hci_sco_hdr {
@@ -97,17 +108,17 @@ struct bt_hci_acl_hdr {
 #define bt_iso_pkt_flags(h)              ((h) >> 14)
 #define bt_iso_pkt_len_pack(h, f)        (((h) & BIT_MASK(12)) | ((f) << 14))
 
-struct bt_hci_iso_data_hdr {
+struct bt_hci_iso_sdu_hdr {
 	uint16_t sn;
 	uint16_t slen; /* 12 bit len, 2 bit RFU, 2 bit packet status */
 } __packed;
-#define BT_HCI_ISO_DATA_HDR_SIZE	4
+#define BT_HCI_ISO_SDU_HDR_SIZE          4
 
-struct bt_hci_iso_ts_data_hdr {
+struct bt_hci_iso_sdu_ts_hdr {
 	uint32_t ts;
-	struct bt_hci_iso_data_hdr data;
+	struct bt_hci_iso_sdu_hdr sdu;
 } __packed;
-#define BT_HCI_ISO_TS_DATA_HDR_SIZE     8
+#define BT_HCI_ISO_SDU_TS_HDR_SIZE       8
 
 /* Bluetooth spec v5.4 Vol 4, Part E - 5.4.5 HCI ISO Data Packets */
 struct bt_hci_iso_hdr {
@@ -265,8 +276,17 @@ struct bt_hci_cmd_hdr {
 #define BT_FEAT_LE_ISO(feat)            (BT_FEAT_LE_CIS(feat) | \
 					BT_FEAT_LE_BIS(feat))
 
-/* LE States */
-#define BT_LE_STATES_PER_CONN_ADV(states)     (states & 0x0000004000000000)
+/* LE States. See Core_v5.4, Vol 4, Part E, Section 7.8.27 */
+#define BT_LE_STATES_PER_CONN_ADV(states)     (states & BIT64_MASK(38))
+
+#if defined(CONFIG_BT_SCAN_AND_INITIATE_IN_PARALLEL)
+/* Both passive and active scanner can be run in parallel with initiator. */
+#define BT_LE_STATES_SCAN_INIT(states) ((states) & BIT64_MASK(22) && \
+					(states) & BIT64_MASK(23))
+
+#else
+#define BT_LE_STATES_SCAN_INIT(states)  0
+#endif
 
 /* Bonding/authentication types */
 #define BT_HCI_NO_BONDING                       0x00
@@ -556,6 +576,66 @@ struct bt_hci_rp_write_conn_accept_timeout {
 #define BT_BREDR_SCAN_INQUIRY                   0x01
 #define BT_BREDR_SCAN_PAGE                      0x02
 
+#define BT_COD(major_service, major_device, minor_device)                         \
+	(((uint32_t)major_service << 13) | ((uint32_t)major_device << 8) |            \
+	 ((uint32_t)minor_device << 2))
+#define BT_COD_VALID(cod) ((0 == (cod[0] & (BIT(0) | BIT(1)))) ? true : false)
+#define BT_COD_MAJOR_SERVICE_CLASSES(cod)                                         \
+	((((uint32_t)cod[2] & 0xFF) >> 5) | (((uint32_t)cod[1] & 0xD0) >> 5))
+#define BT_COD_MAJOR_DEVICE_CLASS(cod) ((((uint32_t)cod[1]) & 0x1FUL))
+#define BT_COD_MINOR_DEVICE_CLASS(cod) (((((uint32_t)cod[0]) & 0xFF) >> 2))
+
+#define BT_COD_MAJOR_MISC           0x00
+#define BT_COD_MAJOR_COMPUTER       0x01
+#define BT_COD_MAJOR_PHONE          0x02
+#define BT_COD_MAJOR_LAN_NETWORK_AP 0x03
+#define BT_COD_MAJOR_AUDIO_VIDEO    0x04
+#define BT_COD_MAJOR_PERIPHERAL     0x05
+#define BT_COD_MAJOR_IMAGING        0x06
+#define BT_COD_MAJOR_WEARABLE       0x07
+#define BT_COD_MAJOR_TOY            0x08
+#define BT_COD_MAJOR_HEALTH         0x09
+#define BT_COD_MAJOR_UNCATEGORIZED  0x1F
+
+/* Minor Device Class field - Computer Major Class */
+#define BT_COD_MAJOR_COMPUTER_MINOR_UNCATEGORIZED         0x00
+#define BT_COD_MAJOR_COMPUTER_MINOR_DESKTOP               0x01
+#define BT_COD_MAJOR_COMPUTER_MINOR_SERVER_CLASS_COMPUTER 0x02
+#define BT_COD_MAJOR_COMPUTER_MINOR_LAPTOP                0x03
+#define BT_COD_MAJOR_COMPUTER_MINOR_HANDHELD_PC_PDA       0x04
+#define BT_COD_MAJOR_COMPUTER_MINOR_PALM_SIZE_PC_PDA      0x05
+#define BT_COD_MAJOR_COMPUTER_MINOR_WEARABLE_COMPUTER     0x06
+#define BT_COD_MAJOR_COMPUTER_MINOR_TABLET                0x07
+
+/* Minor Device Class field - Phone Major Class */
+#define BT_COD_MAJOR_PHONE_MINOR_UNCATEGORIZED             0x00
+#define BT_COD_MAJOR_PHONE_MINOR_CELLULAR                  0x01
+#define BT_COD_MAJOR_PHONE_MINOR_CORDLESS                  0x02
+#define BT_COD_MAJOR_PHONE_MINOR_SMARTPHONE                0x03
+#define BT_COD_MAJOR_PHONE_MINOR_WIRED_MODEM_VOICE_GATEWAY 0x04
+#define BT_COD_MAJOR_PHONE_MINOR_ISDN                      0x05
+
+/* Minor Device Class field - Audio/Video Major Class */
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_UNCATEGORIZED             0x00
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_WEARABLE_HEADSET          0x01
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_HANDS_FREE                0x02
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_RFU                       0x03
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_MICROPHONE                0x04
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_LOUDSPEAKER               0x05
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_HEADPHONES                0x06
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_PORTABLE_AUDIO            0x07
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_CAR_AUDIO                 0x08
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_SET_TOP_BOX               0x09
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_HIFI_AUDIO                0x0A
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_VCR                       0x0B
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_VIDEO_CAMERA              0x0C
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_CAMCORDER                 0x0D
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_VIDEO_MONITOR             0x0E
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_VIDEO_DISPLAY_LOUDSPEAKER 0x0F
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_VIDEO_CONFERENCING        0x10
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_RFU2                      0x11
+#define BT_COD_MAJOR_AUDIO_VIDEO_MINOR_GAME_TOY                  0x12
+
 #define BT_HCI_OP_WRITE_CLASS_OF_DEVICE         BT_OP(BT_OGF_BASEBAND, 0x0024) /* 0x0c24 */
 struct bt_hci_cp_write_class_of_device {
 	uint8_t  class_of_device[3];
@@ -603,6 +683,26 @@ struct bt_hci_cp_le_set_tx_power_report_enable {
 	uint8_t  local_enable;
 	uint8_t  remote_enable;
 } __packed;
+
+struct bt_hci_cp_le_set_path_loss_reporting_parameters {
+	uint16_t handle;
+	uint8_t  high_threshold;
+	uint8_t  high_hysteresis;
+	uint8_t  low_threshold;
+	uint8_t  low_hysteresis;
+	uint16_t min_time_spent;
+} __packed;
+
+struct bt_hci_cp_le_set_path_loss_reporting_enable {
+	uint16_t handle;
+	uint8_t  enable;
+} __packed;
+
+#define BT_HCI_OP_LE_SET_PATH_LOSS_REPORTING_PARAMETERS BT_OP(BT_OGF_LE, 0x0078) /* 0x2078 */
+
+#define BT_HCI_LE_PATH_LOSS_REPORTING_DISABLE       0x00
+#define BT_HCI_LE_PATH_LOSS_REPORTING_ENABLE        0x01
+#define BT_HCI_OP_LE_SET_PATH_LOSS_REPORTING_ENABLE BT_OP(BT_OGF_LE, 0x0079) /* 0x2079 */
 
 #define BT_HCI_CTL_TO_HOST_FLOW_DISABLE         0x00
 #define BT_HCI_CTL_TO_HOST_FLOW_ENABLE          0x01
@@ -1271,6 +1371,17 @@ struct bt_hci_cp_le_set_addr_res_enable {
 struct bt_hci_cp_le_set_rpa_timeout {
 	uint16_t rpa_timeout;
 } __packed;
+
+/* All limits according to BT Core spec 5.4 [Vol 4, Part E, 7.8.46] */
+#define BT_HCI_LE_MAX_TX_OCTETS_MIN             0x001B
+#define BT_HCI_LE_MAX_TX_OCTETS_MAX             0x00FB
+#define BT_HCI_LE_MAX_RX_OCTETS_MIN             0x001B
+#define BT_HCI_LE_MAX_RX_OCTETS_MAX             0x00FB
+
+#define BT_HCI_LE_MAX_TX_TIME_MIN               0x0148
+#define BT_HCI_LE_MAX_TX_TIME_MAX               0x4290
+#define BT_HCI_LE_MAX_RX_TIME_MIN               0x0148
+#define BT_HCI_LE_MAX_RX_TIME_MAX               0x4290
 
 #define BT_HCI_OP_LE_READ_MAX_DATA_LEN          BT_OP(BT_OGF_LE, 0x002f) /* 0x202f */
 struct bt_hci_rp_le_read_max_data_len {
@@ -2936,6 +3047,18 @@ struct bt_hci_evt_le_req_peer_sca_complete {
 	uint8_t  status;
 	uint16_t handle;
 	uint8_t  sca;
+} __packed;
+
+#define	BT_HCI_LE_ZONE_ENTERED_LOW      0x0
+#define	BT_HCI_LE_ZONE_ENTERED_MIDDLE   0x1
+#define	BT_HCI_LE_ZONE_ENTERED_HIGH     0x2
+#define	BT_HCI_LE_PATH_LOSS_UNAVAILABLE 0xFF
+
+#define BT_HCI_EVT_LE_PATH_LOSS_THRESHOLD                   0x20
+struct bt_hci_evt_le_path_loss_threshold {
+	uint16_t handle;
+	uint8_t  current_path_loss;
+	uint8_t  zone_entered;
 } __packed;
 
 /** Reason for Transmit power reporting.

@@ -57,6 +57,41 @@
 			zephyr,code = <INPUT_KEY_0>;
 		};
 	};
+
+	arduino_header: connector {
+		compatible = "arduino-header-r3";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <0 0 &gpio1 26 0>,	/* A0 */
+			   <1 0 &gpio1 27 0>,	/* A1 */
+			   <2 0 &gpio1 28 0>,	/* A2 */
+			   <3 0 &gpio1 29 0>,	/* A3 */
+			   <4 0 &gpio1 31 0>,	/* A4 */
+			   <5 0 &gpio1 30 0>,	/* A5 */
+			   <6 0 &gpio1 25 0>,	/* D0 */
+			   <7 0 &gpio1 24 0>,	/* D1 */
+			   <8 0 &gpio1 9 0>,	/* D2 */
+			   <9 0 &gpio1 7 0>,	/* D3 */
+			   <10 0 &gpio1 5 0>,	/* D4 */
+			   <11 0 &gpio1 6 0>,	/* D5 */
+			   <12 0 &gpio1 14 0>,	/* D6 */
+			   <13 0 &gpio1 22 0>,	/* D7 */
+			   <14 0 &gpio1 23 0>,	/* D8 */
+			   <15 0 &gpio1 15 0>,	/* D9 */
+			   <16 0 &gpio1 11 0>,	/* D10 */
+			   <17 0 &gpio1 12 0>,	/* D11 */
+			   <18 0 &gpio1 13 0>,	/* D12 */
+			   <19 0 &gpio1 10 0>,	/* D13 */
+			   <20 0 &gpio3 23 0>,	/* D14 */
+			   <21 0 &gpio3 22 0>;	/* D15 */
+	};
+};
+
+arduino_serial: &lpuart2 {
+	pinctrl-0 = <&pinmux_lpuart2>;
+	pinctrl-1 = <&pinmux_lpuart2_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 &w25q32jvwj0 {
@@ -65,40 +100,55 @@
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
-
 		boot_partition: partition@0 {
 			label = "mcuboot";
-			reg = <0x00000000 DT_SIZE_K(64)>;
+			reg = <0x00000000 DT_SIZE_K(128)>;
 		};
-		/* Note slot 0 has one additional sector,
-		 * this is intended for use with the swap move algorithm
+		/* The MCUBoot swap-move algorithm uses the last 2 sectors
+		 * of the primary slot0 for swap status and move.
 		 */
-		slot0_partition: partition@10000 {
+		slot0_partition: partition@20000 {
 			label = "image-0";
-			reg = <0x00010000 DT_SIZE_K(1924)>;
+			reg = <0x00020000 (DT_SIZE_K(1920) + DT_SIZE_K(8))>;
 		};
-		slot1_partition: partition@1f1000 {
+		slot1_partition: partition@202000 {
 			label = "image-1";
-			reg = <0x001F1000 DT_SIZE_K(1920)>;
+			reg = <0x00202000 DT_SIZE_K(1920)>;
 		};
-		storage_partition: partition@3d1000 {
+		storage_partition: partition@3E2000 {
 			label = "storage";
-			reg = <0x003D1000 DT_SIZE_K(188)>;
+			reg = <0x003E2000 DT_SIZE_K(120)>;
 		};
 	};
 };
 
-&enet {
+&enet_mac {
 	status = "okay";
 	pinctrl-0 = <&pinmux_enet>;
 	pinctrl-names = "default";
-	int-gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
-	reset-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
-	ptp {
+	phy-handle = <&phy>;
+	zephyr,random-mac-address;
+	phy-connection-type = "rmii";
+};
+
+&enet_mdio {
+	status = "okay";
+	pinctrl-0 = <&pinmux_enet_mdio>;
+	pinctrl-names = "default";
+	phy: phy@0 {
+		compatible = "microchip,ksz8081";
+		reg = <0>;
 		status = "okay";
-		pinctrl-0 = <&pinmux_ptp>;
-		pinctrl-names = "default";
+		reset-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
+		int-gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
+		microchip,interface-type = "rmii";
 	};
+};
+
+&enet_ptp_clock {
+	status = "okay";
+	pinctrl-0 = <&pinmux_ptp>;
+	pinctrl-names = "default";
 };
 
 &lpuart1 {
@@ -117,7 +167,6 @@
 
 &flexcan1 {
 	status = "okay";
-	bus-speed = <125000>;
 	pinctrl-0 = <&pinmux_flexcan1>;
 	pinctrl-names = "default";
 

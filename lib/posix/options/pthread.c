@@ -86,7 +86,7 @@ static sys_dlist_t posix_thread_q[] = {
 	SYS_DLIST_STATIC_INIT(&posix_thread_q[POSIX_THREAD_RUN_Q]),
 	SYS_DLIST_STATIC_INIT(&posix_thread_q[POSIX_THREAD_DONE_Q]),
 };
-static struct posix_thread posix_thread_pool[CONFIG_MAX_PTHREAD_COUNT];
+static struct posix_thread posix_thread_pool[CONFIG_POSIX_THREAD_THREADS_MAX];
 static struct k_spinlock pthread_pool_lock;
 static int pthread_concurrency;
 
@@ -123,8 +123,8 @@ static inline enum posix_thread_qid posix_thread_q_get(struct posix_thread *t)
  * perspective of the application). With a linear space, this means that
  * the theoretical pthread_t range is [0,2147483647].
  */
-BUILD_ASSERT(CONFIG_MAX_PTHREAD_COUNT < PTHREAD_OBJ_MASK_INIT,
-	     "CONFIG_MAX_PTHREAD_COUNT is too high");
+BUILD_ASSERT(CONFIG_POSIX_THREAD_THREADS_MAX < PTHREAD_OBJ_MASK_INIT,
+	     "CONFIG_POSIX_THREAD_THREADS_MAX is too high");
 
 static inline size_t posix_thread_to_offset(struct posix_thread *t)
 {
@@ -148,7 +148,7 @@ struct posix_thread *to_posix_thread(pthread_t pthread)
 		return NULL;
 	}
 
-	if (bit >= CONFIG_MAX_PTHREAD_COUNT) {
+	if (bit >= ARRAY_SIZE(posix_thread_pool)) {
 		LOG_DBG("Invalid pthread (%x)", pthread);
 		return NULL;
 	}
@@ -186,22 +186,6 @@ pthread_t pthread_self(void)
 int pthread_equal(pthread_t pt1, pthread_t pt2)
 {
 	return (pt1 == pt2);
-}
-
-pid_t getpid(void)
-{
-	/*
-	 * To maintain compatibility with some other POSIX operating systems,
-	 * a PID of zero is used to indicate that the process exists in another namespace.
-	 * PID zero is also used by the scheduler in some cases.
-	 * PID one is usually reserved for the init process.
-	 * Also note, that negative PIDs may be used by kill()
-	 * to send signals to process groups in some implementations.
-	 *
-	 * At the moment, getpid just returns an arbitrary number >= 2
-	 */
-
-	return 42;
 }
 
 static inline void __z_pthread_cleanup_init(struct __pthread_cleanup *c, void (*routine)(void *arg),
@@ -252,8 +236,8 @@ void __z_pthread_cleanup_pop(int execute)
 
 static bool is_posix_policy_prio_valid(int priority, int policy)
 {
-	if (priority >= sched_get_priority_min(policy) &&
-	    priority <= sched_get_priority_max(policy)) {
+	if (priority >= posix_sched_priority_min(policy) &&
+	    priority <= posix_sched_priority_max(policy)) {
 		return true;
 	}
 
@@ -414,7 +398,7 @@ int pthread_attr_setscope(pthread_attr_t *_attr, int contentionscope)
 		return EINVAL;
 	}
 	if (!(contentionscope == PTHREAD_SCOPE_PROCESS ||
-					     contentionscope == PTHREAD_SCOPE_SYSTEM)) {
+	      contentionscope == PTHREAD_SCOPE_SYSTEM)) {
 		LOG_DBG("%s contentionscope %d", "Invalid", contentionscope);
 		return EINVAL;
 	}
@@ -424,6 +408,45 @@ int pthread_attr_setscope(pthread_attr_t *_attr, int contentionscope)
 		return ENOTSUP;
 	}
 	attr->contentionscope = contentionscope;
+	return 0;
+}
+
+/**
+ * @brief Get inherit scheduler attributes in thread attributes object.
+ *
+ * See IEEE 1003.1
+ */
+int pthread_attr_getinheritsched(const pthread_attr_t *_attr, int *inheritsched)
+{
+	struct posix_thread_attr *attr = (struct posix_thread_attr *)_attr;
+
+	if (!__attr_is_initialized(attr) || inheritsched == NULL) {
+		return EINVAL;
+	}
+	*inheritsched = attr->inheritsched;
+	return 0;
+}
+
+/**
+ * @brief Set inherit scheduler attributes in thread attributes object.
+ *
+ * See IEEE 1003.1
+ */
+int pthread_attr_setinheritsched(pthread_attr_t *_attr, int inheritsched)
+{
+	struct posix_thread_attr *attr = (struct posix_thread_attr *)_attr;
+
+	if (!__attr_is_initialized(attr)) {
+		LOG_DBG("attr %p is not initialized", attr);
+		return EINVAL;
+	}
+
+	if (inheritsched != PTHREAD_INHERIT_SCHED && inheritsched != PTHREAD_EXPLICIT_SCHED) {
+		LOG_DBG("Invalid inheritsched %d", inheritsched);
+		return EINVAL;
+	}
+
+	attr->inheritsched = inheritsched;
 	return 0;
 }
 
@@ -597,6 +620,14 @@ int pthread_create(pthread_t *th, const pthread_attr_t *_attr, void *(*threadrou
 	} else {
 		/* copy user-provided attr into thread, caller must destroy attr at a later time */
 		t->attr = *(struct posix_thread_attr *)_attr;
+	}
+
+	if (t->attr.inheritsched == PTHREAD_INHERIT_SCHED) {
+		int pol;
+
+		t->attr.priority =
+			zephyr_to_posix_priority(k_thread_priority_get(k_current_get()), &pol);
+		t->attr.schedpolicy = pol;
 	}
 
 	/* spawn the thread */
@@ -823,6 +854,46 @@ int pthread_setschedparam(pthread_t pthread, int policy, const struct sched_para
 }
 
 /**
+ * @brief Set thread scheduling priority.
+ *
+ * See IEEE 1003.1
+ */
+int pthread_setschedprio(pthread_t thread, int prio)
+{
+	int ret;
+	int new_prio = K_LOWEST_APPLICATION_THREAD_PRIO;
+	struct posix_thread *t = NULL;
+	int policy = -1;
+	struct sched_param param;
+
+	ret = pthread_getschedparam(thread, &policy, &param);
+
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (!is_posix_policy_prio_valid(prio, policy)) {
+		return EINVAL;
+	}
+
+	K_SPINLOCK(&pthread_pool_lock) {
+		t = to_posix_thread(thread);
+		if (t == NULL) {
+			ret = ESRCH;
+			K_SPINLOCK_BREAK;
+		}
+
+		new_prio = posix_to_zephyr_priority(prio, policy);
+	}
+
+	if (ret == 0) {
+		k_thread_priority_set(&t->thread, new_prio);
+	}
+
+	return ret;
+}
+
+/**
  * @brief Initialise threads attribute object
  *
  * See IEEE 1003.1
@@ -841,6 +912,7 @@ int pthread_attr_init(pthread_attr_t *_attr)
 	*attr = (struct posix_thread_attr){0};
 	attr->guardsize = CONFIG_POSIX_PTHREAD_ATTR_GUARDSIZE_DEFAULT;
 	attr->contentionscope = PTHREAD_SCOPE_SYSTEM;
+	attr->inheritsched = PTHREAD_INHERIT_SCHED;
 
 	if (DYNAMIC_STACK_SIZE > 0) {
 		attr->stack = k_thread_stack_alloc(DYNAMIC_STACK_SIZE + attr->guardsize,
@@ -1178,7 +1250,7 @@ int pthread_attr_setstacksize(pthread_attr_t *_attr, size_t stacksize)
 			__get_attr_stacksize(attr) + attr->guardsize);
 		return ENOMEM;
 	}
-	LOG_DBG("Allocated thread stack %zu@%p", stacksize + attr->guardsize, attr->stack);
+	LOG_DBG("Allocated thread stack %zu@%p", stacksize + attr->guardsize, new_stack);
 
 	if (attr->stack != NULL) {
 		ret = k_thread_stack_free(attr->stack);
@@ -1287,7 +1359,7 @@ int pthread_setname_np(pthread_t thread, const char *name)
 	k_tid_t kthread;
 
 	thread = get_posix_thread_idx(thread);
-	if (thread >= CONFIG_MAX_PTHREAD_COUNT) {
+	if (thread >= ARRAY_SIZE(posix_thread_pool)) {
 		return ESRCH;
 	}
 
@@ -1311,7 +1383,7 @@ int pthread_getname_np(pthread_t thread, char *name, size_t len)
 	k_tid_t kthread;
 
 	thread = get_posix_thread_idx(thread);
-	if (thread >= CONFIG_MAX_PTHREAD_COUNT) {
+	if (thread >= ARRAY_SIZE(posix_thread_pool)) {
 		return ESRCH;
 	}
 
@@ -1386,10 +1458,8 @@ int pthread_sigmask(int how, const sigset_t *ZRESTRICT set, sigset_t *ZRESTRICT 
 
 static int posix_thread_pool_init(void)
 {
-	size_t i;
-
-	for (i = 0; i < CONFIG_MAX_PTHREAD_COUNT; ++i) {
-		posix_thread_q_set(&posix_thread_pool[i], POSIX_THREAD_READY_Q);
+	ARRAY_FOR_EACH_PTR(posix_thread_pool, th) {
+		posix_thread_q_set(th, POSIX_THREAD_READY_Q);
 	}
 
 	return 0;

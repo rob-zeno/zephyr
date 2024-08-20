@@ -305,6 +305,12 @@ static int mcux_flexcan_start(const struct device *dev)
 		timing.fphaseSeg2 = data->timing_data.phase_seg2 - 1U;
 		timing.fpropSeg = data->timing_data.prop_seg;
 		FLEXCAN_SetFDTimingConfig(config->base, &timing);
+
+		FLEXCAN_EnterFreezeMode(config->base);
+		config->base->FDCTRL &= ~(CAN_FDCTRL_TDCOFF_MASK);
+		config->base->FDCTRL |= FIELD_PREP(CAN_FDCTRL_TDCOFF_MASK,
+						   CAN_CALC_TDCO((&data->timing_data), 1U, 31U));
+		FLEXCAN_ExitFreezeMode(config->base);
 	}
 #endif /* CONFIG_CAN_MCUX_FLEXCAN_FD */
 
@@ -671,8 +677,6 @@ static int mcux_flexcan_send(const struct device *dev,
 	uint8_t max_dlc = CAN_MAX_DLC;
 	int alloc;
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 	if (UTIL_AND(IS_ENABLED(CONFIG_CAN_MCUX_FLEXCAN_FD),
 		     ((data->common.mode & CAN_MODE_FD) != 0U))) {
 		if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR |
@@ -771,8 +775,6 @@ static int mcux_flexcan_add_rx_filter(const struct device *dev,
 	uint32_t mask;
 	int alloc = -ENOSPC;
 	int i;
-
-	__ASSERT_NO_MSG(callback);
 
 	if ((filter->flags & ~(CAN_FILTER_IDE)) != 0) {
 		LOG_ERR("unsupported CAN filter flags 0x%02x", filter->flags);
@@ -1143,7 +1145,7 @@ static int mcux_flexcan_init(const struct device *dev)
 	k_sem_init(&data->tx_allocs_sem, MCUX_FLEXCAN_MAX_TX,
 		   MCUX_FLEXCAN_MAX_TX);
 
-	err = can_calc_timing(dev, &data->timing, config->common.bus_speed,
+	err = can_calc_timing(dev, &data->timing, config->common.bitrate,
 			      config->common.sample_point);
 	if (err == -EINVAL) {
 		LOG_ERR("Can't find timing for given param");
@@ -1164,7 +1166,7 @@ static int mcux_flexcan_init(const struct device *dev)
 #ifdef CONFIG_CAN_MCUX_FLEXCAN_FD
 	if (config->flexcan_fd) {
 		err = can_calc_timing_data(dev, &data->timing_data,
-					   config->common.bus_speed_data,
+					   config->common.bitrate_data,
 					   config->common.sample_point_data);
 		if (err == -EINVAL) {
 			LOG_ERR("Can't find timing for given param");
@@ -1377,7 +1379,7 @@ static const struct can_driver_api mcux_flexcan_fd_driver_api = {
 
 #ifdef CONFIG_CAN_MCUX_FLEXCAN_FD
 #define FLEXCAN_MAX_BITRATE(id)							\
-	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_DRV_INST(id), FLEXCAN_FD_DRV_COMPAT),	\
+	COND_CODE_1(DT_INST_NODE_HAS_COMPAT(id, FLEXCAN_FD_DRV_COMPAT),		\
 		    (8000000), (1000000))
 #else /* CONFIG_CAN_MCUX_FLEXCAN_FD */
 #define FLEXCAN_MAX_BITRATE(id) 1000000
@@ -1385,7 +1387,7 @@ static const struct can_driver_api mcux_flexcan_fd_driver_api = {
 
 #ifdef CONFIG_CAN_MCUX_FLEXCAN_FD
 #define FLEXCAN_DRIVER_API(id)							\
-	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_DRV_INST(id), FLEXCAN_FD_DRV_COMPAT),	\
+	COND_CODE_1(DT_INST_NODE_HAS_COMPAT(id, FLEXCAN_FD_DRV_COMPAT),		\
 		    (mcux_flexcan_fd_driver_api),				\
 		    (mcux_flexcan_driver_api))
 #else /* CONFIG_CAN_MCUX_FLEXCAN_FD */
@@ -1407,7 +1409,7 @@ static const struct can_driver_api mcux_flexcan_fd_driver_api = {
 			DT_INST_CLOCKS_CELL(id, name),			\
 		.clk_source = DT_INST_PROP(id, clk_source),		\
 		IF_ENABLED(CONFIG_CAN_MCUX_FLEXCAN_FD, (		\
-			.flexcan_fd = DT_NODE_HAS_COMPAT(DT_DRV_INST(id), FLEXCAN_FD_DRV_COMPAT), \
+			.flexcan_fd = DT_INST_NODE_HAS_COMPAT(id, FLEXCAN_FD_DRV_COMPAT), \
 		))							\
 		.irq_config_func = mcux_flexcan_irq_config_##id,	\
 		.irq_enable_func = mcux_flexcan_irq_enable_##id,	\

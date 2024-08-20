@@ -13,6 +13,13 @@ class Json_report:
         "components":[]
     }
 
+    simulators = [
+        'unit_testing',
+        'native',
+        'qemu',
+        'mps2/an385'
+    ]
+
     report_json = {}
 
     def __init__(self):
@@ -62,7 +69,8 @@ class Json_report:
                                     break
                             sub_component_name = testcase_name[testcase_name.find('.'):]
                             sub_component_name = sub_component_name[1:]
-                            sub_component_name = sub_component_name[:sub_component_name.find(".")]
+                            if sub_component_name.find(".") > 0:
+                                sub_component_name = sub_component_name[:sub_component_name.find(".")]
                             if known_component_flag is False:
 
                                 sub_component = {
@@ -80,7 +88,7 @@ class Json_report:
                                 test_case = {
                                     "name":testcase_name
                                 }
-                                if 'qemu' in testsuite['platform'] or 'native' in testsuite['platform']:
+                                if any(platform in testsuite['platform'] for platform in self.simulators):
                                     if test_suite['status'] == "":
                                         test_suite['status'] = 'sim_only'
 
@@ -122,7 +130,7 @@ class Json_report:
                                     test_case = {
                                         "name": testcase_name
                                     }
-                                    if 'qemu' in testsuite['platform'] or 'native' in testsuite['platform']:
+                                    if any(platform in testsuite['platform'] for platform in self.simulators):
                                         if test_suite['status'] == "":
                                             test_suite['status'] = 'sim_only'
 
@@ -159,7 +167,7 @@ class Json_report:
                                         test_case  = {
                                             "name": testcase_name
                                         }
-                                        if 'qemu' in testsuite['platform'] or 'native' in testsuite['platform']:
+                                        if any(platform in testsuite['platform'] for platform in self.simulators):
                                             if test_suite['status'] == "":
                                                 test_suite['status'] = 'sim_only'
 
@@ -175,6 +183,18 @@ class Json_report:
                                         test_suite['platforms'].append(testsuite['platform'])
                                         sub_component["test_suites"].append(test_suite)
                                     else:
+                                        if any(platform in testsuite['platform'] for platform in self.simulators):
+                                            if test_suite['status'] == "":
+                                                test_suite['status'] = 'sim_only'
+
+                                            if test_suite['status'] == 'hw_only':
+                                                test_suite['status'] = 'mixed'
+                                        else:
+                                            if test_suite['status'] == "":
+                                                test_suite['status'] = 'hw_only'
+
+                                            if test_suite['status'] == 'sim_only':
+                                                test_suite['status'] = 'mixed'
                                         test_case = {}
                                         test_cases = test_suite['test_cases']
                                         known_testcase_flag = False
@@ -254,7 +274,9 @@ class Json_report:
                                                 "Name":i_fun['name']
                                             }
                                             json_file['Uncovered_Functions'].append(json_uncovered_funciton)
-                                    json_files.append(json_file)
+                                    comp_exists = [x for x in json_files if x['Path'] == json_file['Path']]
+                                    if not comp_exists:
+                                        json_files.append(json_file)
                         json_component['files']=json_files
                         output_json['components'].append(json_component)
                     else:

@@ -20,6 +20,11 @@ struct can_shell_tx_event {
 	int error;
 };
 
+struct can_shell_rx_event {
+	struct can_frame frame;
+	const struct device *dev;
+};
+
 struct can_shell_mode_mapping {
 	const char *name;
 	can_mode_t mode;
@@ -49,7 +54,8 @@ static struct k_poll_event can_shell_tx_msgq_events[] = {
 					&can_shell_tx_msgq, 0)
 };
 
-CAN_MSGQ_DEFINE(can_shell_rx_msgq, CONFIG_CAN_SHELL_RX_QUEUE_SIZE);
+K_MSGQ_DEFINE(can_shell_rx_msgq, sizeof(struct can_shell_rx_event),
+	      CONFIG_CAN_SHELL_RX_QUEUE_SIZE, 4);
 const struct shell *can_shell_rx_msgq_sh;
 static struct k_work_poll can_shell_rx_msgq_work;
 static struct k_poll_event can_shell_rx_msgq_events[] = {
@@ -62,15 +68,32 @@ static struct k_poll_event can_shell_rx_msgq_events[] = {
 static void can_shell_tx_msgq_triggered_work_handler(struct k_work *work);
 static void can_shell_rx_msgq_triggered_work_handler(struct k_work *work);
 
-static void can_shell_print_frame(const struct shell *sh, const struct can_frame *frame)
+#ifdef CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY
+static void can_shell_dummy_bypass_cb(const struct shell *sh, uint8_t *data, size_t len)
+{
+	ARG_UNUSED(sh);
+	ARG_UNUSED(data);
+	ARG_UNUSED(len);
+}
+#endif /* CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY */
+
+static void can_shell_print_frame(const struct shell *sh, const struct device *dev,
+				  const struct can_frame *frame)
 {
 	uint8_t nbytes = can_dlc_to_bytes(frame->dlc);
 	int i;
+
+#ifdef CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY
+	/* Bypass the shell to avoid breaking up the line containing the frame */
+	shell_set_bypass(sh, can_shell_dummy_bypass_cb);
+#endif /* CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY */
 
 #ifdef CONFIG_CAN_RX_TIMESTAMP
 	/* Timestamp */
 	shell_fprintf(sh, SHELL_NORMAL, "(%05d)  ", frame->timestamp);
 #endif /* CONFIG_CAN_RX_TIMESTAMP */
+
+	shell_fprintf(sh, SHELL_NORMAL, "%s  ", dev->name);
 
 #ifdef CONFIG_CAN_FD_MODE
 	/* Flags */
@@ -102,6 +125,10 @@ static void can_shell_print_frame(const struct shell *sh, const struct can_frame
 	}
 
 	shell_fprintf(sh, SHELL_NORMAL, "\n");
+
+#ifdef CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY
+	shell_set_bypass(sh, NULL);
+#endif /* CONFIG_CAN_SHELL_SCRIPTING_FRIENDLY */
 }
 
 static int can_shell_tx_msgq_poll_submit(const struct shell *sh)
@@ -156,6 +183,23 @@ static void can_shell_tx_callback(const struct device *dev, int error, void *use
 	}
 }
 
+static void can_shell_rx_callback(const struct device *dev, struct can_frame *frame,
+				  void *user_data)
+{
+	struct can_shell_rx_event event;
+	int err;
+
+	ARG_UNUSED(user_data);
+
+	event.frame = *frame;
+	event.dev = dev;
+
+	err = k_msgq_put(&can_shell_rx_msgq, &event, K_NO_WAIT);
+	if (err != 0) {
+		LOG_ERR("CAN shell rx event queue full");
+	}
+}
+
 static int can_shell_rx_msgq_poll_submit(const struct shell *sh)
 {
 	int err;
@@ -177,10 +221,10 @@ static int can_shell_rx_msgq_poll_submit(const struct shell *sh)
 
 static void can_shell_rx_msgq_triggered_work_handler(struct k_work *work)
 {
-	struct can_frame frame;
+	struct can_shell_rx_event event;
 
-	while (k_msgq_get(&can_shell_rx_msgq, &frame, K_NO_WAIT) == 0) {
-		can_shell_print_frame(can_shell_rx_msgq_sh, &frame);
+	while (k_msgq_get(&can_shell_rx_msgq, &event, K_NO_WAIT) == 0) {
+		can_shell_print_frame(can_shell_rx_msgq_sh, event.dev, &event.frame);
 	}
 
 	(void)can_shell_rx_msgq_poll_submit(can_shell_rx_msgq_sh);
@@ -280,9 +324,9 @@ static int cmd_can_show(const struct shell *sh, size_t argc, char **argv)
 	const struct can_timing *timing_max;
 	struct can_bus_err_cnt err_cnt;
 	enum can_state state;
-	uint32_t max_bitrate = 0;
-	int max_std_filters = 0;
-	int max_ext_filters = 0;
+	uint32_t bitrate_max;
+	int max_std_filters;
+	int max_ext_filters;
 	uint32_t core_clock;
 	can_mode_t cap;
 	int err;
@@ -298,11 +342,7 @@ static int cmd_can_show(const struct shell *sh, size_t argc, char **argv)
 		return err;
 	}
 
-	err = can_get_max_bitrate(dev, &max_bitrate);
-	if (err != 0 && err != -ENOSYS) {
-		shell_error(sh, "failed to get maximum bitrate (err %d)", err);
-		return err;
-	}
+	bitrate_max = can_get_bitrate_max(dev);
 
 	max_std_filters = can_get_max_filters(dev, false);
 	if (max_std_filters < 0 && max_std_filters != -ENOSYS) {
@@ -329,7 +369,7 @@ static int cmd_can_show(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	shell_print(sh, "core clock:      %d Hz", core_clock);
-	shell_print(sh, "max bitrate:     %d bps", max_bitrate);
+	shell_print(sh, "max bitrate:     %d bps", bitrate_max);
 	shell_print(sh, "max std filters: %d", max_std_filters);
 	shell_print(sh, "max ext filters: %d", max_ext_filters);
 
@@ -678,8 +718,8 @@ static int cmd_can_send(const struct shell *sh, size_t argc, char **argv)
 	const struct device *dev = device_get_binding(argv[1]);
 	static unsigned int frame_counter;
 	unsigned int frame_no;
-	struct can_frame frame;
-	uint32_t max_id;
+	struct can_frame frame = { 0 };
+	uint32_t id_mask;
 	int argidx = 2;
 	uint32_t val;
 	char *endptr;
@@ -693,7 +733,7 @@ static int cmd_can_send(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	/* Defaults */
-	max_id = CAN_MAX_STD_ID;
+	id_mask = CAN_STD_ID_MASK;
 	frame.flags = 0;
 	frame.dlc = 0;
 
@@ -704,7 +744,7 @@ static int cmd_can_send(const struct shell *sh, size_t argc, char **argv)
 			break;
 		} else if (strcmp(argv[argidx], "-e") == 0) {
 			frame.flags |= CAN_FRAME_IDE;
-			max_id = CAN_MAX_EXT_ID;
+			id_mask = CAN_EXT_ID_MASK;
 			argidx++;
 		} else if (strcmp(argv[argidx], "-r") == 0) {
 			frame.flags |= CAN_FRAME_RTR;
@@ -735,7 +775,7 @@ static int cmd_can_send(const struct shell *sh, size_t argc, char **argv)
 		return -EINVAL;
 	}
 
-	if (val > max_id) {
+	if (val > id_mask) {
 		shell_error(sh, "CAN ID 0x%0*x out of range",
 			    (frame.flags & CAN_FRAME_IDE) != 0 ? 8 : 3,
 			    val);
@@ -783,7 +823,7 @@ static int cmd_can_send(const struct shell *sh, size_t argc, char **argv)
 		    (frame.flags & CAN_FRAME_RTR) != 0 ? 1 : 0,
 		    (frame.flags & CAN_FRAME_FDF) != 0 ? 1 : 0,
 		    (frame.flags & CAN_FRAME_BRS) != 0 ? 1 : 0,
-		    can_dlc_to_bytes(frame.dlc));
+		    frame.dlc);
 
 	err = can_send(dev, &frame, K_NO_WAIT, can_shell_tx_callback, UINT_TO_POINTER(frame_no));
 	if (err != 0) {
@@ -798,7 +838,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 {
 	const struct device *dev = device_get_binding(argv[1]);
 	struct can_filter filter;
-	uint32_t max_id;
+	uint32_t id_mask;
 	int argidx = 2;
 	uint32_t val;
 	char *endptr;
@@ -810,7 +850,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	/* Defaults */
-	max_id = CAN_MAX_STD_ID;
+	id_mask = CAN_STD_ID_MASK;
 	filter.flags = 0U;
 
 	/* Parse options */
@@ -820,7 +860,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 			break;
 		} else if (strcmp(argv[argidx], "-e") == 0) {
 			filter.flags |= CAN_FILTER_IDE;
-			max_id = CAN_MAX_EXT_ID;
+			id_mask = CAN_EXT_ID_MASK;
 			argidx++;
 		} else {
 			shell_error(sh, "unsupported argument %s", argv[argidx]);
@@ -842,7 +882,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 		return -EINVAL;
 	}
 
-	if (val > max_id) {
+	if (val > id_mask) {
 		shell_error(sh, "CAN ID 0x%0*x out of range",
 			    (filter.flags & CAN_FILTER_IDE) != 0 ? 8 : 3,
 			    val);
@@ -859,7 +899,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 			return -EINVAL;
 		}
 
-		if (val > max_id) {
+		if (val > id_mask) {
 			shell_error(sh, "CAN ID mask 0x%0*x out of range",
 				    (filter.flags & CAN_FILTER_IDE) != 0 ? 8 : 3,
 				    val);
@@ -867,7 +907,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 		}
 
 	} else {
-		val = max_id;
+		val = id_mask;
 	}
 
 	filter.mask = val;
@@ -883,7 +923,7 @@ static int cmd_can_filter_add(const struct shell *sh, size_t argc, char **argv)
 		    (filter.flags & CAN_FILTER_IDE) != 0 ? 8 : 3, filter.id,
 		    (filter.flags & CAN_FILTER_IDE) != 0 ? 8 : 3, filter.mask);
 
-	err = can_add_rx_filter_msgq(dev, &can_shell_rx_msgq, &filter);
+	err = can_add_rx_filter(dev, can_shell_rx_callback, NULL, &filter);
 	if (err < 0) {
 		shell_error(sh, "failed to add filter (err %d)", err);
 		return err;

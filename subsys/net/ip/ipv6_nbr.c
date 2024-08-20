@@ -14,7 +14,7 @@
 #define NET_DEBUG_NBR 0
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(net_ipv6, CONFIG_NET_IPV6_LOG_LEVEL);
+LOG_MODULE_REGISTER(net_ipv6_nd, CONFIG_NET_IPV6_ND_LOG_LEVEL);
 
 #include <errno.h>
 #include <stdlib.h>
@@ -490,7 +490,7 @@ static void dbg_update_neighbor_lladdr_raw(uint8_t *new_lladdr,
 			net_sprint_ipv6_addr(dst),		\
 			net_pkt_iface(pkt),				\
 			net_if_get_by_iface(net_pkt_iface(pkt)));	\
-	} while (0)
+	} while (false)
 
 #define dbg_addr_recv(pkt_str, src, dst, pkt)	\
 	dbg_addr("Received", pkt_str, src, dst, pkt)
@@ -508,7 +508,7 @@ static void dbg_update_neighbor_lladdr_raw(uint8_t *new_lladdr,
 			net_sprint_ipv6_addr(target),	\
 			net_pkt_iface(pkt),				\
 			net_if_get_by_iface(net_pkt_iface(pkt)));	\
-	} while (0)
+	} while (false)
 
 #define dbg_addr_recv_tgt(pkt_str, src, dst, tgt, pkt)		\
 	dbg_addr_with_tgt("Received", pkt_str, src, dst, tgt, pkt)
@@ -866,6 +866,8 @@ ignore_frag_error:
 	if (net_if_ipv6_addr_onlink(&iface, (struct in6_addr *)ip_hdr->dst)) {
 		nexthop = (struct in6_addr *)ip_hdr->dst;
 		net_pkt_set_iface(pkt, iface);
+	} else if (net_ipv6_is_ll_addr((struct in6_addr *)ip_hdr->dst)) {
+		nexthop = (struct in6_addr *)ip_hdr->dst;
 	} else {
 		/* We need to figure out where the destination
 		 * host is located.
@@ -2229,6 +2231,7 @@ static inline uint32_t remaining_lifetime(struct net_if_addr *ifaddr)
 static inline void handle_prefix_autonomous(struct net_pkt *pkt,
 			struct net_icmpv6_nd_opt_prefix_info *prefix_info)
 {
+	struct net_if *iface = net_pkt_iface(pkt);
 	struct in6_addr addr = { };
 	struct net_if_addr *ifaddr;
 
@@ -2236,9 +2239,8 @@ static inline void handle_prefix_autonomous(struct net_pkt *pkt,
 	 * setup link local address, and then copy prefix over first 8
 	 * bytes of that address.
 	 */
-	net_ipv6_addr_create_iid(&addr,
-				 net_if_get_link_addr(net_pkt_iface(pkt)));
-	memcpy(&addr, prefix_info->prefix, sizeof(prefix_info->prefix) / 2);
+	net_ipv6_addr_create_iid(&addr, net_if_get_link_addr(iface));
+	memcpy(&addr, prefix_info->prefix, sizeof(struct in6_addr) / 2);
 
 	ifaddr = net_if_ipv6_addr_lookup(&addr, NULL);
 	if (ifaddr && ifaddr->addr_type == NET_ADDR_AUTOCONF) {
@@ -2272,13 +2274,22 @@ static inline void handle_prefix_autonomous(struct net_pkt *pkt,
 	} else {
 		if (prefix_info->valid_lifetime ==
 		    NET_IPV6_ND_INFINITE_LIFETIME) {
-			net_if_ipv6_addr_add(net_pkt_iface(pkt),
-					     &addr, NET_ADDR_AUTOCONF, 0);
+			net_if_ipv6_addr_add(iface, &addr,
+					     NET_ADDR_AUTOCONF, 0);
 		} else {
-			net_if_ipv6_addr_add(net_pkt_iface(pkt),
-					     &addr, NET_ADDR_AUTOCONF,
+			net_if_ipv6_addr_add(iface, &addr, NET_ADDR_AUTOCONF,
 					     prefix_info->valid_lifetime);
 		}
+	}
+
+	/* If privacy extensions are enabled, then start the procedure for that
+	 * too.
+	 */
+	if (IS_ENABLED(CONFIG_NET_IPV6_PE) && iface->pe_enabled) {
+		net_ipv6_pe_start(iface,
+				  (const struct in6_addr *)prefix_info->prefix,
+				  prefix_info->valid_lifetime,
+				  prefix_info->preferred_lifetime);
 	}
 }
 

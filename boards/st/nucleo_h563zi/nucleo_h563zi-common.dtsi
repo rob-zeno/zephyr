@@ -66,7 +66,7 @@
 	div-m = <2>;
 	mul-n = <120>;
 	div-p = <2>;
-	div-q = <2>;
+	div-q = <3>;
 	div-r = <2>;
 	clocks = <&clk_hse>;
 	status = "okay";
@@ -84,7 +84,7 @@
 	ahb-prescaler = <1>;
 	apb1-prescaler = <2>;
 	apb2-prescaler = <1>;
-	apb3-prescaler = <1>;
+	apb3-prescaler = <2>;
 };
 
 &lpuart1 {
@@ -152,6 +152,15 @@
 	status = "okay";
 };
 
+&fdcan1 {
+	pinctrl-0 = <&fdcan1_rx_pd0 &fdcan1_tx_pd1>;
+	pinctrl-names = "default";
+	clocks = <&rcc STM32_CLOCK_BUS_APB1_2 0x00000200>,
+		 <&rcc STM32_SRC_PLL1_Q FDCAN_SEL(1)>;
+	clk-divider = <2>;
+	status = "okay";
+};
+
 &flash0 {
 	partitions {
 		compatible = "fixed-partitions";
@@ -188,5 +197,15 @@ zephyr_udc0: &usb {
 };
 
 &vbat {
+	status = "okay";
+};
+
+&clk_lsi {
+	status = "okay";
+};
+
+stm32_lp_tick_source: &lptim4 {
+	clocks = <&rcc STM32_CLOCK_BUS_APB3 0x2000>,
+		 <&rcc STM32_SRC_LSI LPTIM4_SEL(4)>;
 	status = "okay";
 };

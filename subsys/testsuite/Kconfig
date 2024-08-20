@@ -74,6 +74,7 @@ endchoice
 
 config COVERAGE_GCOV_HEAP_SIZE
 	int "Size of heap allocated for gcov coverage data dump"
+	depends on COVERAGE_GCOV
 	default 32768 if X86 || SOC_SERIES_MPS2
 	default 16384
 	help
@@ -164,7 +165,6 @@ config TEST_FLASH_DRIVERS
 	bool "Test flash drivers"
 	depends on BOARD_QEMU_X86
 	select FLASH_HAS_DRIVER_ENABLED
-	select FLASH_HAS_PAGE_LAYOUT
 	help
 	  This option will help test the flash drivers. This should be enabled
 	  only when using qemu_x86.

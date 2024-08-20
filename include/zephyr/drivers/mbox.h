@@ -20,6 +20,8 @@ extern "C" {
 /**
  * @brief MBOX Interface
  * @defgroup mbox_interface MBOX Interface
+ * @since 1.0
+ * @version 0.1.0
  * @ingroup io_interfaces
  * @{
  *
@@ -484,6 +486,6 @@ static inline int mbox_max_channels_get_dt(const struct mbox_dt_spec *spec)
 }
 #endif
 
-#include <syscalls/mbox.h>
+#include <zephyr/syscalls/mbox.h>
 
 #endif /* ZEPHYR_INCLUDE_DRIVERS_MBOX_H_ */

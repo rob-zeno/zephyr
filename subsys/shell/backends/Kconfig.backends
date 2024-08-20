@@ -28,8 +28,7 @@ if SHELL_BACKEND_SERIAL
 
 config SHELL_BACKEND_SERIAL_INIT_PRIORITY
 	int "Initialization priority"
-	default 55 if ACPI
-	default 0
+	default APPLICATION_INIT_PRIORITY
 	range 0 99
 	help
 	  Initialization priority for UART backend. This must be bigger than
@@ -185,6 +184,7 @@ config SHELL_BACKEND_RTT
 	bool "RTT backend"
 	select CONSOLE
 	select RTT_CONSOLE
+	select SEGGER_RTT_CUSTOM_LOCKING
 	depends on USE_SEGGER_RTT
 	help
 	  Enable RTT backend.
@@ -205,6 +205,23 @@ config SHELL_BACKEND_RTT_BUFFER
 	help
 	  Select index of up-buffer used for shell output, by default it uses
 	  terminal up-buffer and its settings.
+
+config SHELL_BACKEND_RTT_RETRY_CNT
+	int "Number of retries"
+	default 4
+	help
+	  Number of TX retries before dropping the data and assuming that
+	  RTT session is inactive.
+
+config SHELL_BACKEND_RTT_RETRY_DELAY_MS
+	int "Delay between TX retries in milliseconds"
+	default 5
+	help
+	  Sleep period between TX retry attempts. During RTT session, host pulls
+	  data periodically. Period starts from 1-2 milliseconds and can be
+	  increased if traffic on RTT increases (also from host to device). In
+	  case of heavy traffic data can be lost and it may be necessary to
+	  increase delay or number of retries.
 
 config SHELL_RTT_RX_POLL_PERIOD
 	int "RX polling period (in milliseconds)"
@@ -453,7 +470,7 @@ if SHELL_BACKEND_TELNET
 config SHELL_TELNET_INIT_PRIORITY
 	int "Initialization priority"
 	default 95
-	range NET_SOCKETS_SERVICE_INIT_PRIO 99
+	range 0 99
 	help
 	  Initialization priority for telnet shell backend. This must be higher
 	  than socket service initialization priority, as socket service has to
@@ -607,5 +624,30 @@ config SHELL_DUMMY_INIT_LOG_LEVEL
 	default 5 if SHELL_DUMMY_INIT_LOG_LEVEL_DEFAULT
 
 endif # SHELL_BACKEND_DUMMY
+
+config SHELL_BACKEND_ADSP_MEMORY_WINDOW
+	bool "Shell backend implemented over mapped memory window."
+	depends on SOC_FAMILY_INTEL_ADSP
+	help
+	  Enable ADSP memory window backend which can be used to execute commands
+	  from remote host processor that has access to the same memory window.
+
+if SHELL_BACKEND_ADSP_MEMORY_WINDOW
+
+config SHELL_BACKEND_ADSP_MEMORY_WINDOW_PROMPT
+	string "Displayed prompt name"
+	default "~$ "
+	help
+	  Displayed prompt name for ADSP memory window backend. If prompt is set,
+	  the shell will send two newlines during initialization.
+
+config SHELL_BACKEND_ADSP_MEMORY_WINDOW_POLL_INTERVAL
+	int "Poll interval (in microseconds)"
+	default 100
+	help
+	  This option can be used to modify the poll interval the backend uses
+	  to check for new commands.
+
+endif # SHELL_BACKEND_ADSP_MEMORY_WINDOW
 
 endif # SHELL_BACKENDS

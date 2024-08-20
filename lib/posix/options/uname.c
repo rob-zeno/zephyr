@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "version.h"
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net/hostname.h>
 #include <zephyr/posix/sys/utsname.h>
+#include <zephyr/version.h>
 
 #ifdef CONFIG_NET_HOSTNAME_ENABLE
 #define UTSNAME_NODENAME CONFIG_NET_HOSTNAME
@@ -22,7 +22,7 @@
 #define UTSNAME_VERSION(_ver) _ver
 #endif
 
-#ifdef BUILD_VERSION
+#if defined(BUILD_VERSION) && !IS_EMPTY(BUILD_VERSION)
 #define VERSION_BUILD STRINGIFY(BUILD_VERSION)
 #else
 #define VERSION_BUILD KERNEL_VERSION_STRING

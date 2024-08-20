@@ -378,8 +378,6 @@ int can_sja1000_send(const struct device *dev, const struct can_frame *frame, k_
 	uint8_t cmr;
 	uint8_t sr;
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 	if (frame->dlc > CAN_MAX_DLC) {
 		LOG_ERR("TX frame DLC %u exceeds maximum (%d)", frame->dlc, CAN_MAX_DLC);
 		return -EINVAL;
@@ -783,7 +781,7 @@ int can_sja1000_init(const struct device *dev)
 	can_sja1000_write_reg(dev, CAN_SJA1000_AMR2, 0xFF);
 	can_sja1000_write_reg(dev, CAN_SJA1000_AMR3, 0xFF);
 
-	err = can_calc_timing(dev, &timing, config->common.bus_speed,
+	err = can_calc_timing(dev, &timing, config->common.bitrate,
 			      config->common.sample_point);
 	if (err == -EINVAL) {
 		LOG_ERR("bitrate/sample point cannot be met (err %d)", err);

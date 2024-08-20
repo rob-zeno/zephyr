@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/arch/arm/cortex_a_r/lib_helpers.h>
 #include <zephyr/drivers/interrupt_controller/gic.h>
+#include <ipi.h>
 #include "boot.h"
 #include "zephyr/cache.h"
 #include "zephyr/kernel/thread_stack.h"
@@ -90,7 +91,7 @@ extern int z_arm_mmu_init(void);
 #endif
 
 /* Called from Zephyr initialization */
-void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz, arch_cpustart_t fn, void *arg)
+void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz, arch_cpustart_t fn, void *arg)
 {
 	int cpu_count, i, j;
 	uint32_t cpu_mpid = 0;
@@ -120,16 +121,16 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz, arch_cpustart_
 	}
 
 	/* Pass stack address to secondary core */
-	arm_cpu_boot_params.irq_sp = Z_KERNEL_STACK_BUFFER(stack) + sz;
-	arm_cpu_boot_params.fiq_sp = Z_KERNEL_STACK_BUFFER(z_arm_fiq_stack[cpu_num])
+	arm_cpu_boot_params.irq_sp = K_KERNEL_STACK_BUFFER(stack) + sz;
+	arm_cpu_boot_params.fiq_sp = K_KERNEL_STACK_BUFFER(z_arm_fiq_stack[cpu_num])
 				     + CONFIG_ARMV7_FIQ_STACK_SIZE;
-	arm_cpu_boot_params.abt_sp = Z_KERNEL_STACK_BUFFER(z_arm_abort_stack[cpu_num])
+	arm_cpu_boot_params.abt_sp = K_KERNEL_STACK_BUFFER(z_arm_abort_stack[cpu_num])
 				     + CONFIG_ARMV7_EXCEPTION_STACK_SIZE;
-	arm_cpu_boot_params.udf_sp = Z_KERNEL_STACK_BUFFER(z_arm_undef_stack[cpu_num])
+	arm_cpu_boot_params.udf_sp = K_KERNEL_STACK_BUFFER(z_arm_undef_stack[cpu_num])
 				     + CONFIG_ARMV7_EXCEPTION_STACK_SIZE;
-	arm_cpu_boot_params.svc_sp = Z_KERNEL_STACK_BUFFER(z_arm_svc_stack[cpu_num])
+	arm_cpu_boot_params.svc_sp = K_KERNEL_STACK_BUFFER(z_arm_svc_stack[cpu_num])
 				     + CONFIG_ARMV7_SVC_STACK_SIZE;
-	arm_cpu_boot_params.sys_sp = Z_KERNEL_STACK_BUFFER(z_arm_sys_stack[cpu_num])
+	arm_cpu_boot_params.sys_sp = K_KERNEL_STACK_BUFFER(z_arm_sys_stack[cpu_num])
 				     + CONFIG_ARMV7_SYS_STACK_SIZE;
 
 	arm_cpu_boot_params.fn = fn;
@@ -210,7 +211,7 @@ void arch_secondary_cpu_init(void)
 
 #ifdef CONFIG_SMP
 
-static void broadcast_ipi(unsigned int ipi)
+static void send_ipi(unsigned int ipi, uint32_t cpu_bitmap)
 {
 	uint32_t mpidr = MPIDR_TO_CORE(GET_MPIDR());
 
@@ -220,6 +221,10 @@ static void broadcast_ipi(unsigned int ipi)
 	unsigned int num_cpus = arch_num_cpus();
 
 	for (int i = 0; i < num_cpus; i++) {
+		if ((cpu_bitmap & BIT(i)) == 0) {
+			continue;
+		}
+
 		uint32_t target_mpidr = cpu_map[i];
 		uint8_t aff0;
 
@@ -239,10 +244,14 @@ void sched_ipi_handler(const void *unused)
 	z_sched_ipi();
 }
 
-/* arch implementation of sched_ipi */
-void arch_sched_ipi(void)
+void arch_sched_broadcast_ipi(void)
 {
-	broadcast_ipi(SGI_SCHED_IPI);
+	send_ipi(SGI_SCHED_IPI, IPI_ALL_CPUS_MASK);
+}
+
+void arch_sched_directed_ipi(uint32_t cpu_bitmap)
+{
+	send_ipi(SGI_SCHED_IPI, cpu_bitmap);
 }
 
 int arch_smp_init(void)
@@ -258,7 +267,5 @@ int arch_smp_init(void)
 
 	return 0;
 }
-
-SYS_INIT(arch_smp_init, PRE_KERNEL_2, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 
 #endif

@@ -7,14 +7,6 @@ config NUM_IRQS
 	# must be >= the highest interrupt number used
 	default 60
 
-# In the LPC55XXX Family, this is currently being used to set the
-# core clock value at it's highest frequency which clocks at 150MHz.
-# Note that flash programming operations are limited to 100MHz, and
-# this PLL should not be used as the core clock in those cases.
-config INIT_PLL1
-	default "y"
-	depends on !(SOC_LPC55S06 || FLASH || BUILD_WITH_TFM)
-
 config SYS_CLOCK_HW_CYCLES_PER_SEC
 	default 144000000 if INIT_PLL1
 	default 96000000
@@ -44,12 +36,13 @@ config LPC55XXX_SRAM_CLOCKS
 # By default, USB RAM is assumed to be present.
 # Disable this Kconfig in case there is no dedicated USB RAM.
 config LPC55XXX_USB_RAM
-	default y
+	default y if (!SOC_LPC55S06 && !SOC_LPC55S36)
+
+# Set to the minimal size of data which can be written.
+config FLASH_FILL_BUFFER_SIZE
+	default 512
 
 if SOC_LPC55S06
-
-config LPC55XXX_USB_RAM
-	default n
 
 endif # SOC_LPC55S06
 
@@ -78,9 +71,6 @@ if SOC_LPC55S36
 choice USB_MCUX_CONTROLLER_TYPE
 	default USB_DC_NXP_LPCIP3511
 endchoice
-
-config LPC55XXX_USB_RAM
-	default n
 
 endif # SOC_LPC55S36
 

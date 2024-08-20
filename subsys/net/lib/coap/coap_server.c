@@ -16,11 +16,7 @@ LOG_MODULE_DECLARE(net_coap, CONFIG_COAP_LOG_LEVEL);
 #include <zephyr/net/coap_link_format.h>
 #include <zephyr/net/coap_mgmt.h>
 #include <zephyr/net/coap_service.h>
-#ifdef CONFIG_ARCH_POSIX
-#include <fcntl.h>
-#else
 #include <zephyr/posix/fcntl.h>
-#endif
 
 #if defined(CONFIG_NET_TC_THREAD_COOPERATIVE)
 /* Lowest priority cooperative thread */
@@ -96,7 +92,7 @@ static int coap_service_remove_observer(const struct coap_service *service,
 		/* Prefer addr+token to find the observer */
 		obs = coap_find_observer(service->data->observers, MAX_OBSERVERS, addr, token, tkl);
 	} else if (tkl > 0) {
-		/* Then try to to find the observer by token */
+		/* Then try to find the observer by token */
 		obs = coap_find_observer_by_token(service->data->observers, MAX_OBSERVERS, token,
 						  tkl);
 	} else if (addr != NULL) {

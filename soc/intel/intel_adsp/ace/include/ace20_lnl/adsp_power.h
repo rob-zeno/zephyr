@@ -38,9 +38,10 @@ struct ace_pwrsts {
 	uint16_t hstpgs    : 1;
 	uint16_t hubhppgs  : 1;
 	uint16_t dspulppgs : 1;
-	uint16_t ioxpgs    : 4;
-	uint16_t mlpgs     : 2;
-	uint16_t rsvd14    : 1;
+	uint16_t ioxpgs    : 2;
+	uint16_t rsvd11    : 2;
+	uint16_t mlpgs     : 1;
+	uint16_t rsvd14    : 2;
 	uint16_t hubulppgs : 1;
 };
 
@@ -87,6 +88,12 @@ static ALWAYS_INLINE bool soc_cpu_is_powered(int cpu_num)
 {
 	return (ACE_PWRSTS->dsphpxpgs & BIT(cpu_num)) == BIT(cpu_num);
 }
+
+/**
+ * @brief Restore timer after leaving soft-off.
+ *
+ */
+void intel_adsp_clock_soft_off_exit(void);
 
 /**
  * @brief Retrieve node identifier for Intel ADSP HOST power domain.

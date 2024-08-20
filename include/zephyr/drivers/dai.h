@@ -14,6 +14,8 @@
 
 /**
  * @defgroup dai_interface DAI Interface
+ * @since 3.1
+ * @version 0.1.0
  * @ingroup io_interfaces
  * @brief DAI Interface
  *
@@ -266,6 +268,8 @@ struct dai_config {
 	size_t block_size;
 	/** DAI specific link configuration. */
 	uint16_t link_config;
+	/**< tdm slot group number*/
+	uint32_t  tdm_slot_group;
 };
 
 /**

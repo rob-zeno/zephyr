@@ -32,6 +32,12 @@ int bt_l2cap_br_chan_send(struct bt_l2cap_chan *chan, struct net_buf *buf);
 int bt_l2cap_br_chan_send_cb(struct bt_l2cap_chan *chan, struct net_buf *buf, bt_conn_tx_cb_t cb,
 			     void *user_data);
 
+/* Send a single PDU over a BR channel.
+ * Used by e.g. SMP.
+ */
+int bt_l2cap_br_send_cb(struct bt_conn *conn, uint16_t cid, struct net_buf *buf,
+			bt_conn_tx_cb_t cb, void *user_data);
+
 /*
  * Handle security level changed on link passing HCI status of performed
  * security procedure.
@@ -40,3 +46,8 @@ void l2cap_br_encrypt_change(struct bt_conn *conn, uint8_t hci_status);
 
 /* Handle received data */
 void bt_l2cap_br_recv(struct bt_conn *conn, struct net_buf *buf);
+
+/* Pull HCI fragments from buffers intended for `conn` */
+struct net_buf *l2cap_br_data_pull(struct bt_conn *conn,
+				   size_t amount,
+				   size_t *length);

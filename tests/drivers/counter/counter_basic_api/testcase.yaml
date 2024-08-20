@@ -25,7 +25,10 @@ tests:
       - drivers
       - counter
     depends_on: counter
-    platform_allow: nucleo_f429zi nucleo_wba52cg
+    platform_allow:
+      - nucleo_f429zi
+      - nucleo_wba52cg
+      - google_dragonclaw
     timeout: 600
     extra_configs:
       - CONFIG_COUNTER_RTC_STM32_SUBSECONDS=y
@@ -34,7 +37,7 @@ tests:
       - drivers
       - counter
     depends_on: counter
-    platform_allow: mimxrt685_evk
+    platform_allow: mimxrt685_evk/mimxrt685s/cm33
     timeout: 400
     extra_args:
       DTC_OVERLAY_FILE="boards/mimxrt685_evk_rtc_1khz.overlay"

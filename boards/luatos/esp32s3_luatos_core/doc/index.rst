@@ -89,7 +89,6 @@ Current Zephyr's ESP32S3-LUATOS-Core board supports the following features:
 +------------+------------+-------------------------------------+
 | Interface  | Controller | Driver/Component                    |
 +============+============+=====================================+
-+------------+------------+-------------------------------------+
 | UART       | on-chip    | serial port                         |
 +------------+------------+-------------------------------------+
 | GPIO       | on-chip    | gpio                                |
@@ -136,12 +135,15 @@ below to retrieve those files.
 Building & Flashing
 *******************
 
-ESP-IDF bootloader
-==================
+Simple boot
+===========
 
-The board is using the ESP-IDF bootloader as the default 2nd stage bootloader.
-It is build as a subproject at each application build. No further attention
-is expected from the user.
+The board could be loaded using the single binary image, without 2nd stage bootloader.
+It is the default option when building the application without additional configuration.
+
+.. note::
+
+   Simple boot does not provide any security features nor OTA updates.
 
 MCUboot bootloader
 ==================
@@ -158,9 +160,10 @@ There are two options to be used when building an application:
 
    User can select the MCUboot bootloader by adding the following line
    to the board default configuration file.
-   ```
-   CONFIG_BOOTLOADER_MCUBOOT=y
-   ```
+
+   .. code:: cfg
+
+      CONFIG_BOOTLOADER_MCUBOOT=y
 
 Sysbuild
 ========
@@ -229,7 +232,7 @@ If CH343 chip is disabled, You need use the following command to build:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
-   :board: esp32s3_luatos_core_usb/esp32s3/procpu
+   :board: esp32s3_luatos_core/esp32s3/procpu/usb
    :goals: build
 
 The usual ``flash`` target will work with the ``esp32s3_luatos_core`` board

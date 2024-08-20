@@ -6,21 +6,13 @@
 
 #set -x #uncomment this line for debugging
 set -ue
-
-: "${BSIM_COMPONENTS_PATH:?BSIM_COMPONENTS_PATH must be defined}"
-: "${ZEPHYR_BASE:?ZEPHYR_BASE must be set to point to the zephyr root\
- directory}"
-
-WORK_DIR="${WORK_DIR:-${ZEPHYR_BASE}/bsim_out}"
-
-BOARD_ROOT="${BOARD_ROOT:-${ZEPHYR_BASE}}"
-
-mkdir -p ${WORK_DIR}
+: "${ZEPHYR_BASE:?ZEPHYR_BASE must be set to point to the zephyr root directory}"
 
 source ${ZEPHYR_BASE}/tests/bsim/compile.source
 
 app=tests/bsim/bluetooth/host/gatt/authorization compile
 app=tests/bsim/bluetooth/host/gatt/caching compile
+app=tests/bsim/bluetooth/host/gatt/caching conf_overlay=psa_overlay.conf compile
 app=tests/bsim/bluetooth/host/gatt/general compile
 app=tests/bsim/bluetooth/host/gatt/notify compile
 app=tests/bsim/bluetooth/host/gatt/notify_multiple compile

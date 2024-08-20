@@ -225,8 +225,10 @@ unlock:
 #ifdef CONFIG_CAN_FD_MODE
 int can_mcan_set_timing_data(const struct device *dev, const struct can_timing *timing_data)
 {
+	const uint8_t tdco_max = FIELD_GET(CAN_MCAN_TDCR_TDCO, CAN_MCAN_TDCR_TDCO);
 	struct can_mcan_data *data = dev->data;
 	uint32_t dbtp = 0U;
+	uint8_t tdco;
 	int err;
 
 	if (data->common.started) {
@@ -239,6 +241,23 @@ int can_mcan_set_timing_data(const struct device *dev, const struct can_timing *
 		FIELD_PREP(CAN_MCAN_DBTP_DTSEG1, timing_data->phase_seg1 - 1UL) |
 		FIELD_PREP(CAN_MCAN_DBTP_DTSEG2, timing_data->phase_seg2 - 1UL) |
 		FIELD_PREP(CAN_MCAN_DBTP_DBRP, timing_data->prescaler - 1UL);
+
+	if (timing_data->prescaler == 1U || timing_data->prescaler == 2U) {
+		/* TDC can only be enabled if DBRP = { 0, 1 } */
+		dbtp |= CAN_MCAN_DBTP_TDC;
+
+		/* Set TDC offset for correct location of the Secondary Sample Point (SSP) */
+		tdco = CAN_CALC_TDCO(timing_data, 0U, tdco_max);
+		LOG_DBG("TDC enabled, using TDCO %u", tdco);
+
+		err = can_mcan_write_reg(dev, CAN_MCAN_TDCR, FIELD_PREP(CAN_MCAN_TDCR_TDCO, tdco));
+		if (err != 0) {
+			goto unlock;
+		}
+	} else {
+		LOG_DBG("TDC cannot be enabled, prescaler value %u too high",
+			timing_data->prescaler);
+	}
 
 	err = can_mcan_write_reg(dev, CAN_MCAN_DBTP, dbtp);
 	if (err != 0) {
@@ -444,7 +463,10 @@ static void can_mcan_state_change_handler(const struct device *dev)
 	uint32_t cccr;
 	int err;
 
-	(void)can_mcan_get_state(dev, &state, &err_cnt);
+	err = can_mcan_get_state(dev, &state, &err_cnt);
+	if (err != 0) {
+		return;
+	}
 
 	if (state_cb != NULL) {
 		state_cb(dev, state, err_cnt, state_cb_data);
@@ -721,7 +743,7 @@ static void can_mcan_get_message(const struct device *dev, uint16_t fifo_offset,
 
 		data_length = can_dlc_to_bytes(frame.dlc);
 		if (data_length <= sizeof(frame.data)) {
-			if ((frame.flags & CAN_FRAME_RTR) == 0U) {
+			if ((frame.flags & CAN_FRAME_RTR) == 0U && data_length != 0U) {
 				err = can_mcan_read_mram(dev, fifo_offset + get_idx *
 							 sizeof(struct can_mcan_rx_fifo) +
 							 offsetof(struct can_mcan_rx_fifo, data_32),
@@ -778,6 +800,14 @@ void can_mcan_line_1_isr(const struct device *dev)
 	err = can_mcan_read_reg(dev, CAN_MCAN_IR, &ir);
 	if (err != 0) {
 		return;
+	}
+
+	if ((ir & CAN_MCAN_IR_PEA) != 0U) {
+		LOG_DBG("Protocol error in arbitration phase: ir: 0x%x", ir);
+	}
+
+	if ((ir & CAN_MCAN_IR_PED) != 0U) {
+		LOG_DBG("Protocol error in data phase: ir: 0x%x", ir);
 	}
 
 	while ((ir & events) != 0U) {
@@ -902,8 +932,6 @@ int can_mcan_send(const struct device *dev, const struct can_frame *frame, k_tim
 		(frame->flags & CAN_FRAME_FDF) != 0U ? "FD frame" : "",
 		(frame->flags & CAN_FRAME_BRS) != 0U ? "BRS" : "");
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 #ifdef CONFIG_CAN_FD_MODE
 	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR | CAN_FRAME_FDF | CAN_FRAME_BRS)) !=
 	    0) {
@@ -986,7 +1014,7 @@ int can_mcan_send(const struct device *dev, const struct can_frame *frame, k_tim
 		goto err_unlock;
 	}
 
-	if ((frame->flags & CAN_FRAME_RTR) == 0U) {
+	if ((frame->flags & CAN_FRAME_RTR) == 0U && data_length != 0U) {
 		err = can_mcan_write_mram(dev, config->mram_offsets[CAN_MCAN_MRAM_CFG_TX_BUFFER] +
 					put_idx * sizeof(struct can_mcan_tx_buffer) +
 					offsetof(struct can_mcan_tx_buffer, data_32),
@@ -1144,10 +1172,6 @@ int can_mcan_add_rx_filter(const struct device *dev, can_rx_callback_t callback,
 	const struct can_mcan_config *config = dev->config;
 	const struct can_mcan_callbacks *cbs = config->callbacks;
 	int filter_id;
-
-	if (callback == NULL) {
-		return -EINVAL;
-	}
 
 	if ((filter->flags & ~(CAN_FILTER_IDE)) != 0U) {
 		LOG_ERR("unsupported CAN filter flags 0x%02x", filter->flags);
@@ -1427,32 +1451,6 @@ int can_mcan_init(const struct device *dev)
 		return err;
 	}
 
-#if defined(CONFIG_CAN_DELAY_COMP) && defined(CONFIG_CAN_FD_MODE)
-	err = can_mcan_read_reg(dev, CAN_MCAN_DBTP, &reg);
-	if (err != 0) {
-		return err;
-	}
-
-	reg |= CAN_MCAN_DBTP_TDC;
-
-	err = can_mcan_write_reg(dev, CAN_MCAN_DBTP, reg);
-	if (err != 0) {
-		return err;
-	}
-
-	err = can_mcan_read_reg(dev, CAN_MCAN_TDCR, &reg);
-	if (err != 0) {
-		return err;
-	}
-
-	reg |= FIELD_PREP(CAN_MCAN_TDCR_TDCO, config->tx_delay_comp_offset);
-
-	err = can_mcan_write_reg(dev, CAN_MCAN_TDCR, reg);
-	if (err != 0) {
-		return err;
-	}
-#endif /* defined(CONFIG_CAN_DELAY_COMP) && defined(CONFIG_CAN_FD_MODE) */
-
 	err = can_mcan_read_reg(dev, CAN_MCAN_GFC, &reg);
 	if (err != 0) {
 		return err;
@@ -1468,7 +1466,7 @@ int can_mcan_init(const struct device *dev)
 		return err;
 	}
 
-	err = can_calc_timing(dev, &timing, config->common.bus_speed,
+	err = can_calc_timing(dev, &timing, config->common.bitrate,
 			      config->common.sample_point);
 	if (err == -EINVAL) {
 		LOG_ERR("Can't find timing for given param");
@@ -1479,7 +1477,7 @@ int can_mcan_init(const struct device *dev)
 		timing.phase_seg2);
 	LOG_DBG("Sample-point err : %d", err);
 #ifdef CONFIG_CAN_FD_MODE
-	err = can_calc_timing_data(dev, &timing_data, config->common.bus_speed_data,
+	err = can_calc_timing_data(dev, &timing_data, config->common.bitrate_data,
 				   config->common.sample_point_data);
 	if (err == -EINVAL) {
 		LOG_ERR("Can't find timing for given dataphase param");

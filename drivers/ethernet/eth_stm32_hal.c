@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <zephyr/net/net_pkt.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/ethernet.h>
+#include <zephyr/net/phy.h>
 #include <ethernet/eth_stats.h>
 #include <soc.h>
 #include <zephyr/sys/printk.h>
@@ -44,7 +45,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include "eth.h"
 #include "eth_stm32_hal_priv.h"
 
-#if defined(CONFIG_ETH_STM32_HAL_RANDOM_MAC) || DT_INST_PROP(0, zephyr_random_mac_address)
+#if DT_INST_PROP(0, zephyr_random_mac_address)
 #define ETH_STM32_RANDOM_MAC
 #endif
 
@@ -56,6 +57,11 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #define PHY_ADDR	CONFIG_ETH_STM32_HAL_PHY_ADDRESS
 
 #if defined(CONFIG_SOC_SERIES_STM32H7X) || defined(CONFIG_SOC_SERIES_STM32H5X)
+
+#define DEVICE_PHY_BY_NAME(n) \
+	    DEVICE_DT_GET(DT_CHILD(DT_INST_CHILD(n, mdio), ethernet_phy_0))
+
+static const struct device *eth_stm32_phy_dev = DEVICE_PHY_BY_NAME(0);
 
 #define PHY_BSR  ((uint16_t)0x0001U)  /*!< Transceiver Basic Status Register */
 #define PHY_LINKED_STATUS  ((uint16_t)0x0004U)  /*!< Valid link established */
@@ -211,8 +217,9 @@ static HAL_StatusTypeDef read_eth_phy_register(ETH_HandleTypeDef *heth,
 						uint32_t PHYReg,
 						uint32_t *RegVal)
 {
-#if defined(CONFIG_SOC_SERIES_STM32H7X) ||  defined(CONFIG_SOC_SERIES_STM32H5X) || \
-	defined(CONFIG_ETH_STM32_HAL_API_V2)
+#if defined(CONFIG_MDIO)
+	return phy_read(eth_stm32_phy_dev, PHYReg, RegVal);
+#elif defined(CONFIG_ETH_STM32_HAL_API_V2)
 	return HAL_ETH_ReadPHYRegister(heth, PHYAddr, PHYReg, RegVal);
 #else
 	ARG_UNUSED(PHYAddr);
@@ -271,23 +278,8 @@ static inline void setup_mac_filter(ETH_HandleTypeDef *heth)
 #if defined(CONFIG_PTP_CLOCK_STM32_HAL)
 static bool eth_is_ptp_pkt(struct net_if *iface, struct net_pkt *pkt)
 {
-#if defined(CONFIG_NET_VLAN)
-	struct net_eth_vlan_hdr *hdr_vlan;
-	struct ethernet_context *eth_ctx;
-
-	eth_ctx = net_if_l2_data(iface);
-	if (net_eth_is_vlan_enabled(eth_ctx, iface)) {
-		hdr_vlan = (struct net_eth_vlan_hdr *)NET_ETH_HDR(pkt);
-
-		if (ntohs(hdr_vlan->type) != NET_ETH_PTYPE_PTP) {
-			return false;
-		}
-	} else
-#endif
-	{
-		if (ntohs(NET_ETH_HDR(pkt)->type) != NET_ETH_PTYPE_PTP) {
-			return false;
-		}
+	if (ntohs(NET_ETH_HDR(pkt)->type) != NET_ETH_PTYPE_PTP) {
+		return false;
 	}
 
 	net_pkt_set_priority(pkt, NET_PRIORITY_CA);
@@ -360,7 +352,8 @@ static int eth_tx(const struct device *dev, struct net_pkt *pkt)
 #endif /* CONFIG_ETH_STM32_HAL_API_V2 */
 
 #if defined(CONFIG_PTP_CLOCK_STM32_HAL)
-	timestamped_frame = eth_is_ptp_pkt(net_pkt_iface(pkt), pkt);
+	timestamped_frame = eth_is_ptp_pkt(net_pkt_iface(pkt), pkt) ||
+			    net_pkt_is_tx_timestamping(pkt);
 	if (timestamped_frame) {
 		/* Enable transmit timestamp */
 #if defined(CONFIG_ETH_STM32_HAL_API_V2)
@@ -590,26 +583,12 @@ error:
 	return res;
 }
 
-static struct net_if *get_iface(struct eth_stm32_hal_dev_data *ctx,
-				uint16_t vlan_tag)
+static struct net_if *get_iface(struct eth_stm32_hal_dev_data *ctx)
 {
-#if defined(CONFIG_NET_VLAN)
-	struct net_if *iface;
-
-	iface = net_eth_get_vlan_iface(ctx->iface, vlan_tag);
-	if (!iface) {
-		return ctx->iface;
-	}
-
-	return iface;
-#else
-	ARG_UNUSED(vlan_tag);
-
 	return ctx->iface;
-#endif
 }
 
-static struct net_pkt *eth_rx(const struct device *dev, uint16_t *vlan_tag)
+static struct net_pkt *eth_rx(const struct device *dev)
 {
 	struct eth_stm32_hal_dev_data *dev_data;
 	ETH_HandleTypeDef *heth;
@@ -740,7 +719,7 @@ static struct net_pkt *eth_rx(const struct device *dev, uint16_t *vlan_tag)
 #endif /* CONFIG_SOC_SERIES_STM32H7X || CONFIG_SOC_SERIES_STM32H5X */
 #endif /* CONFIG_PTP_CLOCK_STM32_HAL */
 
-	pkt = net_pkt_rx_alloc_with_buffer(get_iface(dev_data, *vlan_tag),
+	pkt = net_pkt_rx_alloc_with_buffer(get_iface(dev_data),
 					   total_len, AF_UNSPEC, 0, K_MSEC(100));
 	if (!pkt) {
 		LOG_ERR("Failed to obtain RX buffer");
@@ -810,41 +789,17 @@ release_desc:
 		goto out;
 	}
 
-#if defined(CONFIG_NET_VLAN)
-	struct net_eth_hdr *hdr = NET_ETH_HDR(pkt);
-
-	if (ntohs(hdr->type) == NET_ETH_PTYPE_VLAN) {
-		struct net_eth_vlan_hdr *hdr_vlan =
-			(struct net_eth_vlan_hdr *)NET_ETH_HDR(pkt);
-
-		net_pkt_set_vlan_tci(pkt, ntohs(hdr_vlan->vlan.tci));
-		*vlan_tag = net_pkt_vlan_tag(pkt);
-
-#if CONFIG_NET_TC_RX_COUNT > 1
-		enum net_priority prio;
-
-		prio = net_vlan2priority(net_pkt_vlan_priority(pkt));
-		net_pkt_set_priority(pkt, prio);
-#endif
-	} else {
-		net_pkt_set_iface(pkt, dev_data->iface);
-	}
-#endif /* CONFIG_NET_VLAN */
-
 #if defined(CONFIG_PTP_CLOCK_STM32_HAL)
-	if (eth_is_ptp_pkt(get_iface(dev_data, *vlan_tag), pkt)) {
-		pkt->timestamp.second = timestamp.second;
-		pkt->timestamp.nanosecond = timestamp.nanosecond;
-	} else {
-		/* Invalid value */
-		pkt->timestamp.second = UINT64_MAX;
-		pkt->timestamp.nanosecond = UINT32_MAX;
+	pkt->timestamp.second = timestamp.second;
+	pkt->timestamp.nanosecond = timestamp.nanosecond;
+	if (timestamp.second != UINT64_MAX) {
+		net_pkt_set_rx_timestamping(pkt, true);
 	}
 #endif /* CONFIG_PTP_CLOCK_STM32_HAL */
 
 out:
 	if (!pkt) {
-		eth_stats_update_errors_rx(get_iface(dev_data, *vlan_tag));
+		eth_stats_update_errors_rx(get_iface(dev_data));
 	}
 
 	return pkt;
@@ -852,7 +807,6 @@ out:
 
 static void rx_thread(void *arg1, void *unused1, void *unused2)
 {
-	uint16_t vlan_tag = NET_VLAN_TAG_UNSPEC;
 	const struct device *dev;
 	struct eth_stm32_hal_dev_data *dev_data;
 	struct net_if *iface;
@@ -877,10 +831,9 @@ static void rx_thread(void *arg1, void *unused1, void *unused2)
 			/* semaphore taken, update link status and receive packets */
 			if (dev_data->link_up != true) {
 				dev_data->link_up = true;
-				net_eth_carrier_on(get_iface(dev_data,
-							     vlan_tag));
+				net_eth_carrier_on(get_iface(dev_data));
 			}
-			while ((pkt = eth_rx(dev, &vlan_tag)) != NULL) {
+			while ((pkt = eth_rx(dev)) != NULL) {
 				iface = net_pkt_iface(pkt);
 #if defined(CONFIG_NET_DSA)
 				iface = dsa_net_recv(iface, &pkt);
@@ -903,15 +856,13 @@ static void rx_thread(void *arg1, void *unused1, void *unused2)
 					if (dev_data->link_up != true) {
 						dev_data->link_up = true;
 						net_eth_carrier_on(
-							get_iface(dev_data,
-								  vlan_tag));
+							get_iface(dev_data));
 					}
 				} else {
 					if (dev_data->link_up != false) {
 						dev_data->link_up = false;
 						net_eth_carrier_off(
-							get_iface(dev_data,
-								  vlan_tag));
+							get_iface(dev_data));
 					}
 				}
 			}
@@ -1092,7 +1043,6 @@ void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth_handle)
 static void generate_mac(uint8_t *mac_addr)
 {
 #if defined(ETH_STM32_RANDOM_MAC)
-	/* Either CONFIG_ETH_STM32_HAL_RANDOM_MAC or device tree property */
 	/* "zephyr,random-mac-address" is set, generate a random mac address */
 	gen_random_mac(mac_addr, ST_OUI_B0, ST_OUI_B1, ST_OUI_B2);
 #else /* Use user defined mac address */
@@ -1103,10 +1053,6 @@ static void generate_mac(uint8_t *mac_addr)
 	mac_addr[3] = NODE_MAC_ADDR_OCTET(DT_DRV_INST(0), 3);
 	mac_addr[4] = NODE_MAC_ADDR_OCTET(DT_DRV_INST(0), 4);
 	mac_addr[5] = NODE_MAC_ADDR_OCTET(DT_DRV_INST(0), 5);
-#elif defined(CONFIG_ETH_STM32_HAL_USER_STATIC_MAC)
-	mac_addr[3] = CONFIG_ETH_STM32_HAL_MAC3;
-	mac_addr[4] = CONFIG_ETH_STM32_HAL_MAC4;
-	mac_addr[5] = CONFIG_ETH_STM32_HAL_MAC5;
 #else
 	uint8_t unique_device_ID_12_bytes[12];
 	uint32_t result_mac_32_bits;
@@ -1279,7 +1225,6 @@ static int eth_initialize(const struct device *dev)
 	setup_mac_filter(heth);
 
 
-
 	LOG_DBG("MAC %02x:%02x:%02x:%02x:%02x:%02x",
 		dev_data->mac_addr[0], dev_data->mac_addr[1],
 		dev_data->mac_addr[2], dev_data->mac_addr[3],
@@ -1289,20 +1234,6 @@ static int eth_initialize(const struct device *dev)
 }
 
 #if defined(CONFIG_ETH_STM32_MULTICAST_FILTER)
-static uint32_t reverse(uint32_t val)
-{
-	uint32_t res = 0;
-	int i;
-
-	for (i = 0; i < 32; i++) {
-		if (val & BIT(i)) {
-			res |= BIT(31 - i);
-		}
-	}
-
-	return res;
-}
-
 static void eth_stm32_mcast_filter(const struct device *dev, const struct ethernet_filter *filter)
 {
 	struct eth_stm32_hal_dev_data *dev_data = (struct eth_stm32_hal_dev_data *)dev->data;
@@ -1313,7 +1244,7 @@ static void eth_stm32_mcast_filter(const struct device *dev, const struct ethern
 
 	heth = &dev_data->heth;
 
-	crc = reverse(crc32_ieee(filter->mac_address.addr, sizeof(struct net_eth_addr)));
+	crc = __RBIT(crc32_ieee(filter->mac_address.addr, sizeof(struct net_eth_addr)));
 	hash_index = (crc >> 26) & 0x3f;
 
 	__ASSERT_NO_MSG(hash_index < ARRAY_SIZE(dev_data->hash_index_cnt));
@@ -1366,10 +1297,6 @@ static void eth_iface_init(struct net_if *iface)
 	dev_data = dev->data;
 	__ASSERT_NO_MSG(dev_data != NULL);
 
-	/* For VLAN, this value is only used to get the correct L2 driver.
-	 * The iface pointer in context should contain the main interface
-	 * if the VLANs are enabled.
-	 */
 	if (dev_data->iface == NULL) {
 		dev_data->iface = iface;
 		is_first_init = true;
@@ -1875,7 +1802,7 @@ static int ptp_stm32_init(const struct device *port)
 
 #if defined(CONFIG_ETH_STM32_HAL_API_V2)
 	/* Set PTP Configuration done */
-	heth->IsPtpConfigured = HAL_ETH_PTP_CONFIGURATED;
+	heth->IsPtpConfigured = ETH_STM32_PTP_CONFIGURED;
 #endif
 
 	return 0;

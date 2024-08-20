@@ -10,6 +10,7 @@ import random
 import logging
 import shutil
 import glob
+import csv
 
 from twisterlib.testsuite import TestCase, TestSuite
 from twisterlib.platform import Platform
@@ -66,12 +67,30 @@ class TestInstance:
             self.build_dir = os.path.join(outdir, platform.normalized_name, source_dir_rel, testsuite.name)
         self.run_id = self._get_run_id()
         self.domains = None
+        # Instance need to use sysbuild if a given suite or a platform requires it
+        self.sysbuild = testsuite.sysbuild or platform.sysbuild
 
         self.run = False
         self.testcases: list[TestCase] = []
         self.init_cases()
         self.filters = []
         self.filter_type = None
+
+    def record(self, recording, fname_csv="recording.csv"):
+        if recording:
+            if self.recording is None:
+                self.recording = recording.copy()
+            else:
+                self.recording.extend(recording)
+
+            filename = os.path.join(self.build_dir, fname_csv)
+            with open(filename, "wt") as csvfile:
+                cw = csv.DictWriter(csvfile,
+                                    fieldnames = self.recording[0].keys(),
+                                    lineterminator = os.linesep,
+                                    quoting = csv.QUOTE_NONNUMERIC)
+                cw.writeheader()
+                cw.writerows(self.recording)
 
     def add_filter(self, reason, filter_type):
         self.filters.append({'type': filter_type, 'reason': reason })
@@ -163,7 +182,7 @@ class TestInstance:
             # command-line, then we need to run the test, not just build it.
             fixture = testsuite.harness_config.get('fixture')
             if fixture:
-                can_run = fixture in fixtures
+                can_run = fixture in map(lambda f: f.split(sep=':')[0], fixtures)
 
         return can_run
 
@@ -181,11 +200,10 @@ class TestInstance:
             if self.platform.simulation == "qemu":
                 if os.name != "nt":
                     handler = QEMUHandler(self, "qemu")
-                    handler.args.append(f"QEMU_PIPE={handler.get_fifo()}")
-                    handler.ready = True
                 else:
                     handler = QEMUWinHandler(self, "qemu")
-                    handler.ready = True
+                handler.args.append(f"QEMU_PIPE={handler.get_fifo()}")
+                handler.ready = True
             else:
                 handler = SimulationHandler(self, self.platform.simulation)
 
@@ -202,7 +220,6 @@ class TestInstance:
         if handler:
             handler.options = options
             handler.generator_cmd = env.generator_cmd
-            handler.generator = env.generator
             handler.suite_name_check = not options.disable_suite_name_check
         self.handler = handler
 
@@ -320,7 +337,7 @@ class TestInstance:
 
     def get_elf_file(self) -> str:
 
-        if self.testsuite.sysbuild:
+        if self.sysbuild:
             build_dir = self.domains.get_default_domain().build_dir
         else:
             build_dir = self.build_dir

@@ -57,8 +57,10 @@ static bool frontend_runtime_filtering(const void *source, uint32_t level)
 		return true;
 	}
 
-	/* If only frontend is used and log got here it means that it was accepted. */
-	if (IS_ENABLED(CONFIG_LOG_FRONTEND_ONLY)) {
+	/* If only frontend is used and log got here it means that it was accepted
+	 * unless userspace is enabled then runtime filtering is done here.
+	 */
+	if (!IS_ENABLED(CONFIG_USERSPACE) && IS_ENABLED(CONFIG_LOG_FRONTEND_ONLY)) {
 		return true;
 	}
 
@@ -329,7 +331,6 @@ void z_impl_z_log_msg_static_create(const void *source,
 
 	z_log_msg_finalize(msg, source, out_desc, data);
 }
-EXPORT_SYSCALL(z_log_msg_static_create);
 
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_z_log_msg_static_create(const void *source,
@@ -338,7 +339,7 @@ static inline void z_vrfy_z_log_msg_static_create(const void *source,
 {
 	return z_impl_z_log_msg_static_create(source, desc, package, data);
 }
-#include <syscalls/z_log_msg_static_create_mrsh.c>
+#include <zephyr/syscalls/z_log_msg_static_create_mrsh.c>
 #endif
 
 void z_log_msg_runtime_vcreate(uint8_t domain_id, const void *source,
@@ -357,6 +358,12 @@ void z_log_msg_runtime_vcreate(uint8_t domain_id, const void *source,
 		va_end(ap2);
 	} else {
 		plen = 0;
+	}
+
+	if (plen > Z_LOG_MSG_MAX_PACKAGE) {
+		LOG_WRN("Message dropped because it exceeds size limitation (%u)",
+			(uint32_t)Z_LOG_MSG_MAX_PACKAGE);
+		return;
 	}
 
 	size_t msg_wlen = Z_LOG_MSG_ALIGNED_WLEN(plen, dlen);
@@ -389,4 +396,22 @@ void z_log_msg_runtime_vcreate(uint8_t domain_id, const void *source,
 	if (BACKENDS_IN_USE()) {
 		z_log_msg_finalize(msg, source, desc, data);
 	}
+}
+
+int16_t log_msg_get_source_id(struct log_msg *msg)
+{
+	if (!z_log_is_local_domain(log_msg_get_domain(msg))) {
+		/* Remote domain is converting source pointer to ID */
+		return (int16_t)(uintptr_t)log_msg_get_source(msg);
+	}
+
+	void *source = (void *)log_msg_get_source(msg);
+
+	if (source != NULL) {
+		return IS_ENABLED(CONFIG_LOG_RUNTIME_FILTERING)
+					? log_dynamic_source_id(source)
+					: log_const_source_id(source);
+	}
+
+	return -1;
 }

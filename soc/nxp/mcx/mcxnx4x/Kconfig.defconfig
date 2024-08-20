@@ -12,35 +12,16 @@ config ROM_START_OFFSET
 config ZTEST_NO_YIELD
 	default y if (PM && ZTEST)
 
-DT_CHOSEN_Z_FLASH := zephyr,flash
-DT_COMPAT_FLEXSPI := nxp,imx-flexspi
-
-DT_CHOSEN_FLASH_NODE := $(dt_chosen_path,$(DT_CHOSEN_Z_FLASH))
-DT_CHOSEN_FLASH_PARENT := $(dt_node_parent,$(DT_CHOSEN_FLASH_NODE))
-
-DT_FLASH_PARENT_IS_FLEXSPI := $(dt_node_has_compat,$(DT_CHOSEN_FLASH_PARENT),$(DT_COMPAT_FLEXSPI))
-DT_FLASH_HAS_SIZE_PROP := $(dt_node_has_prop,$(DT_CHOSEN_FLASH_NODE),size)
-
-config FLASH_BASE_ADDRESS
-	default $(dt_node_reg_addr_hex,$(DT_CHOSEN_FLASH_PARENT),1) \
-		if $(DT_FLASH_PARENT_IS_FLEXSPI)
-
-config FLASH_SIZE
-	default $(dt_node_int_prop_int,$(DT_CHOSEN_FLASH_NODE),size,Kb) \
-		if $(DT_FLASH_HAS_SIZE_PROP)
-
-if MCUX_OS_TIMER
+config MCUX_LPTMR_TIMER
+	default n if (DT_HAS_NXP_OS_TIMER_ENABLED || DT_HAS_ARM_ARMV8M_SYSTICK_ENABLED)
 
 config SYS_CLOCK_HW_CYCLES_PER_SEC
-	default 1000000
+	default 1000000 if MCUX_OS_TIMER
+	default 16000 if MCUX_LPTMR_TIMER
+	default 150000000 if CORTEX_M_SYSTICK
 
-endif # MCUX_OS_TIMER
-
-if CORTEX_M_SYSTICK
-
-config SYS_CLOCK_HW_CYCLES_PER_SEC
-	default 150000000
-
-endif # CORTEX_M_SYSTICK
+# Set to the minimal size of data which can be written.
+config FLASH_FILL_BUFFER_SIZE
+	default 128
 
 endif # SOC_SERIES_MCXNX4X

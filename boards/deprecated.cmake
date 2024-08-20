@@ -39,7 +39,7 @@ set(adp_xc7k_ae350_DEPRECATED
     adp_xc7k
 )
 set(am62x_m4_phyboard_lyra_DEPRECATED
-    phyboard_lyra_am62x/am6234/m4
+    phyboard_lyra/am6234/m4
 )
 set(am62x_m4_sk_DEPRECATED
     sk_am62/am6234/m4
@@ -138,31 +138,61 @@ set(ebyte_e73_tbb_nrf52832_DEPRECATED
     ebyte_e73_tbb
 )
 set(efm32pg_stk3402a_DEPRECATED
-    efm32pg_stk3402a/efm32pg12b500f1024gl125
+    slstk3402a/efm32pg12b500f1024gl125
 )
 set(efm32pg_stk3402a_jg_DEPRECATED
-    efm32pg_stk3402a/efm32jg12b500f1024gl125
+    slstk3402a/efm32jg12b500f1024gl125
+)
+set(efm32hg_slstk3400a_DEPRECATED
+    slstk3400a
+)
+set(efm32pg_stk3401a_DEPRECATED
+    slstk3401a
+)
+set(efm32gg_stk3701a_DEPRECATED
+    slstk3701a
+)
+set(efm32gg_slwstk6121a_DEPRECATED
+    slwrb4321a
 )
 set(efr32_radio_brd4104a_DEPRECATED
-    efr32_radio/efr32bg13p632f512gm48
+    slwrb4104a
 )
 set(efr32_radio_brd4161a_DEPRECATED
-    efr32_radio/efr32mg12p432f1024gl125
+    slwrb4161a
 )
 set(efr32_radio_brd4170a_DEPRECATED
-    efr32_radio/efr32mg12p433f1024gm68
+    slwrb4170a
 )
 set(efr32_radio_brd4180a_DEPRECATED
-    efr32_radio/efr32mg21a020f1024im32
+    slwrb4180a
 )
 set(efr32_radio_brd4187c_DEPRECATED
-    efr32_radio/efr32mg24b220f1536im48
+    xg24_rb4187c
 )
 set(efr32_radio_brd4250b_DEPRECATED
-    efr32_radio/efr32fg1p133f256gm48
+    slwrb4250b
 )
 set(efr32_radio_brd4255a_DEPRECATED
-    efr32_radio/efr32fg13p233f512gm48
+    slwrb4255a
+)
+set(efm32gg_sltb009a_DEPRECATED
+    sltb009a
+)
+set(efr32mg_sltb004a_DEPRECATED
+    sltb004a
+)
+set(efr32bg22_brd4184a_DEPRECATED
+    sltb010a@0
+)
+set(efr32bg22_brd4184b_DEPRECATED
+    sltb010a@2
+)
+set(efr32xg24_dk2601b_DEPRECATED
+    xg24_dk2601b
+)
+set(efr32bg27_brd2602a_DEPRECATED
+    xg27_dk2602a
 )
 set(em_starterkit_DEPRECATED
     em_starterkit/emsk_em9d
@@ -384,7 +414,7 @@ set(mimxrt595_evk_cm33_DEPRECATED
     mimxrt595_evk/mimxrt595s/cm33
 )
 set(mimxrt685_evk_cm33_DEPRECATED
-    mimxrt685_evk
+    mimxrt685_evk/mimxrt685s/cm33
 )
 set(mps2_an385_DEPRECATED
     mps2/an385
@@ -404,6 +434,15 @@ set(mps3_an547_DEPRECATED
 set(mps3_an547_ns_DEPRECATED
     mps3/an547/ns
 )
+
+set(native_posix_64_DEPRECATED
+    native_posix/native/64
+)
+
+set(native_sim_64_DEPRECATED
+    native_sim/native/64
+)
+
 set(nrf21540dk_nrf52840_DEPRECATED
     nrf21540dk
 )
@@ -445,6 +484,12 @@ set(nrf5340_audio_dk_nrf5340_cpuapp_ns_DEPRECATED
 )
 set(nrf5340_audio_dk_nrf5340_cpunet_DEPRECATED
     nrf5340_audio_dk/nrf5340/cpunet
+)
+set(nrf5340bsim_nrf5340_cpuapp_DEPRECATED
+    nrf5340bsim/nrf5340/cpuapp
+)
+set(nrf5340bsim_nrf5340_cpunet_DEPRECATED
+    nrf5340bsim/nrf5340/cpunet
 )
 set(nrf5340dk_nrf5340_cpuapp_DEPRECATED
     nrf5340dk/nrf5340/cpuapp
@@ -573,7 +618,7 @@ set(nxp_adsp_imx8m_DEPRECATED
     imx8mp_evk/mimx8ml8/adsp
 )
 set(nxp_adsp_imx8ulp_DEPRECATED
-    imx8ulp_evk/imx8ulp/adsp
+    imx8ulp_evk/mimx8ud7/adsp
 )
 set(nxp_adsp_imx8x_DEPRECATED
     imx8qxp_mek/mimx8qx6/adsp
@@ -615,7 +660,7 @@ set(pan1783a_pa_evb_cpunet_DEPRECATED
     pan1783a_pa_evb/nrf5340/cpunet
 )
 set(phycore_am62x_a53_DEPRECATED
-    phycore_am62x/am6234/a53
+    phyboard_lyra/am6234/a53
 )
 set(pico_pi_m4_DEPRECATED
     pico_pi/mcimx7d/m4

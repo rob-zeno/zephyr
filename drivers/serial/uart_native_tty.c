@@ -90,7 +90,7 @@ static int native_tty_conv_to_bottom_cfg(struct native_tty_bottom_cfg *bottom_cf
 		return -ENOTSUP;
 	}
 
-	switch (cfg->data_bits) {
+	switch (cfg->stop_bits) {
 	case UART_CFG_STOP_BITS_1:
 		bottom_cfg->stop_bits = NTB_STOP_BITS_1;
 		break;
@@ -289,9 +289,11 @@ void native_tty_uart_irq_function(void *arg1, void *arg2, void *arg3)
 			} else {
 				k_sleep(K_MSEC(1));
 			}
-		} else if (data->tx_irq_enabled) {
+		}
+		if (data->tx_irq_enabled) {
 			native_tty_uart_irq_handler(dev);
-		} else {
+		}
+		if (data->tx_irq_enabled == false && data->rx_irq_enabled == false) {
 			k_sleep(K_MSEC(10));
 		}
 	}

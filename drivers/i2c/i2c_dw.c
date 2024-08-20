@@ -124,7 +124,7 @@ int32_t i2c_dw_idma_rx_transfer(const struct device *dev)
 	dma_cfg.dma_callback = cb_i2c_idma_transfer;
 	dma_cfg.user_data = (void *)dev;
 	dma_cfg.complete_callback_en = 0U;
-	dma_cfg.error_callback_en = 1U;
+	dma_cfg.error_callback_dis = 0U;
 	dma_cfg.block_count = 1U;
 	dma_cfg.head_block = &dma_block_cfg;
 
@@ -172,7 +172,7 @@ int32_t i2c_dw_idma_tx_transfer(const struct device *dev,
 	dma_cfg.dma_callback = cb_i2c_idma_transfer;
 	dma_cfg.user_data = (void *)dev;
 	dma_cfg.complete_callback_en = 0U;
-	dma_cfg.error_callback_en = 1U;
+	dma_cfg.error_callback_dis = 0U;
 	dma_cfg.block_count = 1U;
 	dma_cfg.head_block = &dma_block_cfg;
 
@@ -252,7 +252,9 @@ static inline void i2c_dw_data_ask(const struct device *dev)
 			data |= IC_DATA_CMD_STOP;
 		}
 
+#ifdef CONFIG_I2C_TARGET
 		clear_bit_intr_mask_tx_empty(reg_base);
+#endif /* CONFIG_I2C_TARGET */
 
 		write_cmd_data(data, reg_base);
 
@@ -413,6 +415,7 @@ static void i2c_dw_isr(const struct device *port)
 			i2c_dw_data_read(port);
 		}
 
+#ifdef CONFIG_I2C_TARGET
 		/* Check if the TX FIFO is ready for commands.
 		 * TX FIFO also serves as command queue where read requests
 		 * are written to TX FIFO.
@@ -421,6 +424,7 @@ static void i2c_dw_isr(const struct device *port)
 			    == I2C_MSG_READ) {
 			set_bit_intr_mask_tx_empty(reg_base);
 		}
+#endif /* CONFIG_I2C_TARGET */
 
 		if (intr_stat.bits.tx_empty) {
 			if ((dw->xfr_flags & I2C_MSG_RW_MASK)
@@ -628,6 +632,7 @@ static int i2c_dw_transfer(const struct device *dev,
 	uint8_t pflags;
 	int ret;
 	uint32_t reg_base = get_regs(dev);
+	uint32_t value = 0;
 
 	__ASSERT_NO_MSG(msgs);
 	if (!num_msgs) {
@@ -671,6 +676,11 @@ static int i2c_dw_transfer(const struct device *dev,
 
 		/* Process all the messages */
 	while (msg_left > 0) {
+		/* Workaround for I2C scanner as DW HW does not support 0 byte transfers.*/
+		if ((cur_msg->len == 0) && (cur_msg->buf != NULL)) {
+			cur_msg->len = 1;
+		}
+
 		pflags = dw->xfr_flags;
 
 		dw->xfr_buf = cur_msg->buf;
@@ -710,7 +720,12 @@ static int i2c_dw_transfer(const struct device *dev,
 		}
 
 		/* Wait for transfer to be done */
-		k_sem_take(&dw->device_sync_sem, K_FOREVER);
+		ret = k_sem_take(&dw->device_sync_sem, K_MSEC(CONFIG_I2C_DW_RW_TIMEOUT_MS));
+		if (ret != 0) {
+			write_intr_mask(DW_DISABLE_ALL_I2C_INT, reg_base);
+			value = read_clr_intr(reg_base);
+			break;
+		}
 
 		if (dw->state & I2C_DW_CMD_ERROR) {
 			ret = -EIO;

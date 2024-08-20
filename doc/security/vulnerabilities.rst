@@ -1665,6 +1665,31 @@ This has been fixed in main for v3.6.0
 - `PR 66592 fix for main
   <https://github.com/zephyrproject-rtos/zephyr/pull/66592>`_
 
+CVE-2023-7060
+-------------
+
+Missing Security Control in Zephyr OS IP Packet Handling
+
+- `Zephyr project bug tracker GHSA-fjc8-223c-qgqr
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-fjc8-223c-qgqr>`_
+
+This has been fixed in main for v3.6.0
+
+- `PR 66645 fix for main
+  <https://github.com/zephyrproject-rtos/zephyr/pull/66645>`_
+
+- `PR 66739 fix for 3.5
+  <https://github.com/zephyrproject-rtos/zephyr/pull/66739>`_
+
+- `PR 66738 fix for 3.4
+  <https://github.com/zephyrproject-rtos/zephyr/pull/66738>`_
+
+- `PR 66887 fix for 2.7
+  <https://github.com/zephyrproject-rtos/zephyr/pull/66887>`_
+
+CVE-2024
+========
+
 CVE-2024-1638
 -------------
 
@@ -1677,3 +1702,84 @@ This has been fixed in main for v3.6.0
 
 - `PR 69170 fix for main
   <https://github.com/zephyrproject-rtos/zephyr/pull/69170>`_
+
+CVE-2024-3077
+-------------
+
+Bluetooth: Integer underflow in gatt_find_info_rsp. A malicious BLE
+device can crash BLE victim device by sending malformed gatt packet.
+
+- `Zephyr project bug tracker GHSA-gmfv-4vfh-2mh8
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-gmfv-4vfh-2mh8>`_
+
+This has been fixed in main for v3.7.0
+
+- `PR 69396 fix for main
+  <https://github.com/zephyrproject-rtos/zephyr/pull/69396>`_
+
+CVE-2024-3332
+-------------
+
+Bluetooth: DoS caused by null pointer dereference.
+
+A malicious BLE device can send a specific order of packet
+sequence to cause a DoS attack on the victim BLE device.
+
+- `Zephyr project bug tracker GHSA-jmr9-xw2v-5vf4
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-jmr9-xw2v-5vf4>`_
+
+This has been fixed in main for v3.7.0
+
+- `PR 71030 fix for main
+  <https://github.com/zephyrproject-rtos/zephyr/pull/71030>`_
+
+
+CVE-2024-4785
+-------------
+
+Under embargo until 2024-08-07
+
+CVE-2024-5754
+-------------
+
+Under embargo until 2024-09-04
+
+CVE-2024-5931
+-------------
+
+Under embargo until 2024-09-10
+
+CVE-2024-6135
+-------------
+
+Under embargo until 2024-09-11
+
+CVE-2024-6137
+-------------
+
+Under embargo until 2024-09-11
+
+CVE-2024-6258
+-------------
+
+Under embargo until 2024-09-05
+
+CVE-2024-6259
+-------------
+
+Under embargo until 2024-09-12
+
+CVE-2024-6442
+-------------
+
+Under embargo until 2024-09-22
+
+CVE-2024-6443
+-------------
+
+Under embargo until 2024-09-22
+
+CVE-2024-6444
+-------------
+
+Under embargo until 2024-09-22

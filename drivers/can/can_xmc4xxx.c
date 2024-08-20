@@ -156,8 +156,6 @@ static int can_xmc4xxx_send(const struct device *dev, const struct can_frame *ms
 		msg->flags & CAN_FRAME_FDF ? "FD frame" : "",
 		msg->flags & CAN_FRAME_BRS ? "BRS" : "");
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 	if (msg->dlc > CAN_XMC4XXX_MAX_DLC) {
 		return -EINVAL;
 	}
@@ -871,7 +869,7 @@ static int can_xmc4xxx_init(const struct device *dev)
 	}
 #endif
 
-	ret = can_calc_timing(dev, &timing, dev_cfg->common.bus_speed,
+	ret = can_calc_timing(dev, &timing, dev_cfg->common.bitrate,
 			      dev_cfg->common.sample_point);
 	if (ret < 0) {
 		return ret;
