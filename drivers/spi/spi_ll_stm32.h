@@ -35,6 +35,10 @@ struct spi_stm32_config {
 	size_t pclk_len;
 	const struct stm32_pclken *pclken;
 	bool fifo_enabled;
+	
+#if DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi)
+	bool io_swap_enabled;
+#endif
 };
 
 #ifdef CONFIG_SPI_STM32_DMA

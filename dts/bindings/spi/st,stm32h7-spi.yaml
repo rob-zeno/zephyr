@@ -31,3 +31,7 @@ properties:
   fifo-enable:
     type: boolean
     description: Enable the SPI FIFO usage for performance improvement.
+
+  io-swap:
+    type: boolean
+    description: Swap COPI/CIPO (MOSI/MISO) pins for I/O.

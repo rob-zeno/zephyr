@@ -637,6 +637,10 @@ static int spi_stm32_configure(const struct device *dev,
 	}
 
 	LL_SPI_Disable(spi);
+#if DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi)
+	if ( cfg->io_swap_enabled )
+		LL_SPI_EnableIOSwap(spi);
+#endif
 	LL_SPI_SetBaudRatePrescaler(spi, scaler[br - 1]);
 
 	if (SPI_MODE_GET(config->operation) & SPI_MODE_CPOL) {
@@ -1386,6 +1390,9 @@ static const struct spi_stm32_config spi_stm32_cfg_##id = {		\
 	IF_ENABLED(DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi),		\
 		(.mssi_clocks =						\
 			DT_INST_PROP(id, mssi_clock),))			\
+	IF_ENABLED(DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi),		\
+		(.io_swap_enabled =					\
+			DT_INST_PROP(id, io_swap),))			\
 };									\
 									\
 static struct spi_stm32_data spi_stm32_dev_data_##id = {		\
