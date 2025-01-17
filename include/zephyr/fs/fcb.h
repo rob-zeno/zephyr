@@ -103,7 +103,11 @@ struct fcb {
 	 */
 
 	uint8_t f_version; /**<  Current version number of the data */
+#if CONFIG_FCB_LARGE_SECTOR_COUNT
+	uint16_t f_sector_cnt; /**< Number of elements in sector array */
+#else
 	uint8_t f_sector_cnt; /**< Number of elements in sector array */
+#endif
 	uint8_t f_scratch_cnt;
 	/**< Number of sectors to keep empty. This can be used if you need
 	 * to have scratch space for garbage collecting when FCB fills up.

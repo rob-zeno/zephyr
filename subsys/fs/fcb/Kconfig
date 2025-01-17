@@ -23,4 +23,9 @@ config FCB_ALLOW_FIXED_ENDMARKER
 	  This allows the FCB instances to disable CRC checks in
 	  favor of increased write throughput.
 
+config FCB_LARGE_SECTOR_COUNT
+	bool "Uses a 16-bit value for storage of sector count in the FCB"
+	help
+	  This allows the FCB instance to work with large flash parts.
+
 endif
