@@ -974,6 +974,7 @@ static bool spi_buf_set_in_nocache(const struct spi_buf_set *bufs)
 }
 #endif /* CONFIG_DCACHE */
 
+#ifndef CONFIG_SPI_STM32H7_ALTERNATE_DMA
 static int transceive_dma(const struct device *dev,
 		      const struct spi_config *config,
 		      const struct spi_buf_set *tx_bufs,
@@ -1125,6 +1126,182 @@ end:
 
 	return ret;
 }
+#else
+static int transceive_dma(const struct device *dev,
+		      const struct spi_config *config,
+		      const struct spi_buf_set *tx_bufs,
+		      const struct spi_buf_set *rx_bufs,
+		      bool asynchronous,
+		      spi_callback_t cb,
+		      void *userdata)
+{
+	const struct spi_stm32_config *cfg = dev->config;
+	struct spi_stm32_data *data = dev->data;
+	SPI_TypeDef *spi = cfg->spi;
+	int ret;
+	int err;
+
+	if (!tx_bufs && !rx_bufs) {
+		return 0;
+	}
+
+	if (asynchronous) {
+		return -ENOTSUP;
+	}
+
+#ifdef CONFIG_DCACHE
+	if ((tx_bufs != NULL && !spi_buf_set_in_nocache(tx_bufs)) ||
+		(rx_bufs != NULL && !spi_buf_set_in_nocache(rx_bufs))) {
+		return -EFAULT;
+	}
+#endif /* CONFIG_DCACHE */
+
+	spi_context_lock(&data->ctx, asynchronous, cb, userdata, config);
+
+	spi_stm32_pm_policy_state_lock_get(dev);
+
+	k_sem_reset(&data->status_sem);
+
+	ret = spi_stm32_configure(dev, config);
+	if (ret) {
+		goto end;
+	}
+
+	/* Set buffers info */
+	if (SPI_WORD_SIZE_GET(config->operation) == 8) {
+		spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, 1);
+	} else {
+		spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, 2);
+	}
+
+	LL_SPI_DisableDMAReq_RX(spi);
+	LL_SPI_DisableDMAReq_TX(spi);
+
+	while (data->ctx.rx_len > 0 || data->ctx.tx_len > 0) {
+		size_t dma_len;
+
+		if (data->ctx.rx_len == 0) {
+			dma_len = data->ctx.tx_len;
+		} else if (data->ctx.tx_len == 0) {
+			dma_len = data->ctx.rx_len;
+		} else {
+			dma_len = MIN(data->ctx.tx_len, data->ctx.rx_len);
+		}
+
+		data->status_flags = 0;
+
+		/*
+			STM32U5xxx Reference manual, 68.4.15:
+
+			When starting communication using DMA, to prevent DMA channel management raising
+			error events, these steps must be followed in order:
+
+			1. Enable DMA Rx buffer in the RXDMAEN bit in the SPI_CFG1 register, if DMA Rx is
+				used.
+			2. Enable DMA requests for Tx and Rx in DMA registers, if the DMA is used.
+			3. Enable DMA Tx buffer in the TXDMAEN bit in the SPI_CFG1 register, if DMA Tx is
+				used.
+			4. Enable the SPI by setting the SPE bit.
+		*/
+
+		// 1
+		LL_SPI_EnableDMAReq_RX(spi);
+
+		// 2
+		ret = spi_dma_move_buffers( dev, dma_len );
+		if ( ret != 0 ) {
+			goto exit_loop;
+		}
+
+		// 3
+		LL_SPI_EnableDMAReq_TX(spi);
+		// 4
+		LL_SPI_Enable(spi);
+
+		if (LL_SPI_GetMode(spi) == LL_SPI_MODE_MASTER) {
+			/* This is turned off in spi_stm32_complete(). */
+			spi_stm32_cs_control(dev, true);
+		}
+
+		ret = wait_dma_rx_tx_done(dev);
+		if (ret != 0) {
+			goto exit_loop;
+		}
+
+		{
+			#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100000
+
+			uint64_t start_to, now;
+			start_to = k_uptime_get();
+			while (ll_func_spi_dma_busy(spi) == 0) {
+				now = k_uptime_get();
+				if ( now - start_to > CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT )
+				{
+					break;
+				}
+			}
+		}
+
+		/*
+			STM32U5xxx Reference manual, 68.4.15:
+
+			To close communication it is mandatory to follow these steps in order:
+
+			1. Disable DMA request for Tx and Rx in the DMA registers, if the DMA issued
+			2. Disable the SPI by following the SPI disable procedure.
+			3. Disable DMA Tx and Rx buffers by clearing the TXDMAEN and RXDMAEN bits in the
+				SPI_CFG1 register, if DMA Tx and/or DMA Rx are used
+		*/
+
+exit_loop:
+		uint8_t frame_size_bytes = bits2bytes(
+			SPI_WORD_SIZE_GET(config->operation));
+
+		spi_context_update_tx(&data->ctx, frame_size_bytes, dma_len);
+		spi_context_update_rx(&data->ctx, frame_size_bytes, dma_len);
+
+		spi_stm32_complete(dev, ret);
+
+		// 1
+		err = dma_stop(data->dma_rx.dma_dev, data->dma_rx.channel);
+		if (err) {
+			LOG_DBG("Rx dma_stop failed with error %d", err);
+		}
+		err = dma_stop(data->dma_tx.dma_dev, data->dma_tx.channel);
+		if (err) {
+			LOG_DBG("Tx dma_stop failed with error %d", err);
+		}
+
+		// 2
+		LL_SPI_Disable(spi);
+
+
+		// 3
+		/* toggle the DMA transfer request */
+		LL_SPI_DisableDMAReq_TX(spi);
+		LL_SPI_DisableDMAReq_RX(spi);
+
+		if ( ret != 0 )
+			break;
+	}
+
+#ifdef CONFIG_SPI_SLAVE
+	if (spi_context_is_slave(&data->ctx) && !ret) {
+		ret = data->ctx.recv_frames;
+	}
+#endif /* CONFIG_SPI_SLAVE */
+
+end:
+	spi_context_release(&data->ctx, ret);
+
+	spi_stm32_pm_policy_state_lock_put(dev);
+
+	return ret;
+}
+#endif
+
+#pragma GCC pop_options
+
 #endif /* CONFIG_SPI_STM32_DMA */
 
 static int spi_stm32_transceive(const struct device *dev,

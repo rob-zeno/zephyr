@@ -49,4 +49,12 @@ config SPI_STM32_BUSY_FLAG_TIMEOUT
 
 endif # SPI_STM32_ERRATA_BUSY
 
+config SPI_STM32H7_ALTERNATE_DMA
+	bool "Alternate SPI DMA implementation for MCUs with STM32H7-compatible SPI"
+	default y
+	depends on DT_HAS_ST_STM32H7_SPI_ENABLED && SPI_STM32_DMA
+	help
+	  Enables alternate SPI DMA for STM32 MCUs with STM32-H7
+	  compatible SPI.
+
 endif # SPI_STM32
