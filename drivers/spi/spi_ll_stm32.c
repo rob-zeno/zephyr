@@ -1229,7 +1229,7 @@ static int transceive_dma(const struct device *dev,
 		}
 
 		{
-			#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100000
+			#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100	// 100 ms is plenty of time
 
 			uint64_t start_to, now;
 			start_to = k_uptime_get();
