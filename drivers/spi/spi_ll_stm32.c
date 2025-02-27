@@ -273,6 +273,7 @@ static int spi_stm32_dma_rx_load(const struct device *dev, uint8_t *buf,
 	return dma_start(data->dma_rx.dma_dev, data->dma_rx.channel);
 }
 
+#ifndef CONFIG_SPI_STM32H7_ALTERNATE_DMA
 static int spi_dma_move_buffers(const struct device *dev, size_t len)
 {
 	struct spi_stm32_data *data = dev->data;
@@ -291,6 +292,28 @@ static int spi_dma_move_buffers(const struct device *dev, size_t len)
 
 	return ret;
 }
+#endif
+
+#ifdef CONFIG_SPI_STM32H7_ALTERNATE_DMA
+static int spi_dma_move_rx_buffers(const struct device *dev, size_t len)
+{
+	struct spi_stm32_data *data = dev->data;
+	size_t dma_segment_len;
+
+	dma_segment_len = len * data->dma_rx.dma_cfg.dest_data_size;
+	return spi_stm32_dma_rx_load(dev, data->ctx.rx_buf, dma_segment_len);
+}
+
+static int spi_dma_move_tx_buffers(const struct device *dev, size_t len)
+{
+	struct spi_stm32_data *data = dev->data;
+	size_t dma_segment_len;
+
+	dma_segment_len = len * data->dma_tx.dma_cfg.source_data_size;
+	return spi_stm32_dma_tx_load(dev, data->ctx.tx_buf, dma_segment_len);
+}
+#endif
+
 
 #endif /* CONFIG_SPI_STM32_DMA */
 
@@ -926,7 +949,8 @@ static int wait_dma_rx_tx_done(const struct device *dev)
 			return -EIO;
 		}
 
-		if (data->status_flags & SPI_STM32_DMA_DONE_FLAG) {
+		/* don't break out of loop until the DMA is COMPLETELY done ... */
+		if ( ( data->status_flags & SPI_STM32_DMA_DONE_FLAG ) == SPI_STM32_DMA_DONE_FLAG ) {
 			return 0;
 		}
 	}
@@ -1127,6 +1151,10 @@ end:
 	return ret;
 }
 #else
+
+unsigned int stm32_spi_txc_tries = 0;
+unsigned int stm32_spi_txc_timeouts = 0;
+
 static int transceive_dma(const struct device *dev,
 		      const struct spi_config *config,
 		      const struct spi_buf_set *tx_bufs,
@@ -1198,45 +1226,69 @@ static int transceive_dma(const struct device *dev,
 
 			1. Enable DMA Rx buffer in the RXDMAEN bit in the SPI_CFG1 register, if DMA Rx is
 				used.
+
+				HOWEVER: HAL code does this AFTER enabling data in DMA registers, so
+				we do what the HAL does.
+
 			2. Enable DMA requests for Tx and Rx in DMA registers, if the DMA is used.
 			3. Enable DMA Tx buffer in the TXDMAEN bit in the SPI_CFG1 register, if DMA Tx is
 				used.
 			4. Enable the SPI by setting the SPE bit.
 		*/
 
-		// 1
-		LL_SPI_EnableDMAReq_RX(spi);
-
-		// 2
-		ret = spi_dma_move_buffers( dev, dma_len );
+		// set up RX DMA
+		ret = spi_dma_move_rx_buffers( dev, dma_len );
 		if ( ret != 0 ) {
+			LOG_ERR("stm32: spi_dma_move_rx_buffers %d", ret);
 			goto exit_loop;
 		}
 
-		// 3
+		// enable RX DMA request register
+		LL_SPI_EnableDMAReq_RX(spi);
+
+		// set up TX DMA
+		ret = spi_dma_move_tx_buffers( dev, dma_len );
+		if ( ret != 0 ) {
+			LOG_ERR("stm32: spi_dma_move_tx_buffers %d", ret);
+			goto exit_loop;
+		}
+
+		// enable TX DMA request register
 		LL_SPI_EnableDMAReq_TX(spi);
-		// 4
+
+		// enable SPI
 		LL_SPI_Enable(spi);
 
+		// start transfer (in master mode)
+		if (LL_SPI_GetMode(spi) == LL_SPI_MODE_MASTER) {
+			LL_SPI_StartMasterTransfer(spi);
+		}
+
+		// enable CS control (in master mode)
 		if (LL_SPI_GetMode(spi) == LL_SPI_MODE_MASTER) {
 			/* This is turned off in spi_stm32_complete(). */
 			spi_stm32_cs_control(dev, true);
 		}
 
+		// wait for DMA operation to complete
 		ret = wait_dma_rx_tx_done(dev);
 		if (ret != 0) {
 			goto exit_loop;
 		}
 
+		// wait for up to 100ms for SPI TX to complete (AFTER DMA has already moved all data)
 		{
 			#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100	// 100 ms is plenty of time
 
 			uint64_t start_to, now;
 			start_to = k_uptime_get();
+			stm32_spi_txc_tries++;
 			while (ll_func_spi_dma_busy(spi) == 0) {
 				now = k_uptime_get();
 				if ( now - start_to > CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT )
 				{
+					LOG_ERR( "stm32: timeout waiting for TXC" );
+					stm32_spi_txc_timeouts++;
 					break;
 				}
 			}
@@ -1260,9 +1312,7 @@ exit_loop:
 		spi_context_update_tx(&data->ctx, frame_size_bytes, dma_len);
 		spi_context_update_rx(&data->ctx, frame_size_bytes, dma_len);
 
-		spi_stm32_complete(dev, ret);
-
-		// 1
+		// disable DMA TX and RX
 		err = dma_stop(data->dma_rx.dma_dev, data->dma_rx.channel);
 		if (err) {
 			LOG_DBG("Rx dma_stop failed with error %d", err);
@@ -1272,18 +1322,21 @@ exit_loop:
 			LOG_DBG("Tx dma_stop failed with error %d", err);
 		}
 
-		// 2
-		LL_SPI_Disable(spi);
+		// disable SPI following the procedure
+		ll_func_disable_spi(spi);
 
-
-		// 3
-		/* toggle the DMA transfer request */
+		// disable DMA TX and RX configuration bits
 		LL_SPI_DisableDMAReq_TX(spi);
 		LL_SPI_DisableDMAReq_RX(spi);
 
 		if ( ret != 0 )
 			break;
 	}
+
+	// re-enable SPI to complete the transaction
+	LL_SPI_Enable(spi);
+	spi_stm32_complete(dev, ret);
+
 
 #ifdef CONFIG_SPI_SLAVE
 	if (spi_context_is_slave(&data->ctx) && !ret) {
