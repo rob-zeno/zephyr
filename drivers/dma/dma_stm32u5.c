@@ -277,6 +277,8 @@ static void dma_stm32_irq_handler(const struct device *dev, uint32_t id)
 		/* Let HAL DMA handle flags on its own */
 		if (!stream->hal_override) {
 			dma_stm32_clear_tc(dma, id);
+			// rob@zenomoto.com - HAL DMA code clears ht when it clears tc, so we do that too now
+			dma_stm32_clear_ht(dma, id);
 		}
 		stream->dma_callback(dev, stream->user_data, callback_arg, DMA_STATUS_COMPLETE);
 	} else {
