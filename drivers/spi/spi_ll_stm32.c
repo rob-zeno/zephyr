@@ -953,6 +953,10 @@ static int wait_dma_rx_tx_done(const struct device *dev)
 		if ( ( data->status_flags & SPI_STM32_DMA_DONE_FLAG ) == SPI_STM32_DMA_DONE_FLAG ) {
 			return 0;
 		}
+		else if ( data->status_flags & SPI_STM32_DMA_DONE_FLAG ) {
+			/* but reduce the timeout if we're only half-way done */
+			timeout = K_MSEC(100);
+		}
 	}
 
 	return res;
@@ -1088,7 +1092,8 @@ static int transceive_dma(const struct device *dev,
 #endif /* ! st_stm32h7_spi */
 
 		ret = wait_dma_rx_tx_done(dev);
-		if (ret != 0) {
+		if ( ! ( ( ret == 0 ) || ( ret == -EAGAIN ) ) )
+		{
 			break;
 		}
 
