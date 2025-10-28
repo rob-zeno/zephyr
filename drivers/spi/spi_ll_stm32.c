@@ -1363,8 +1363,6 @@ end:
 }
 #endif
 
-#pragma GCC pop_options
-
 #endif /* CONFIG_SPI_STM32_DMA */
 
 static int spi_stm32_transceive(const struct device *dev,
