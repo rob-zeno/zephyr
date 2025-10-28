@@ -17,3 +17,7 @@ properties:
 
   pinctrl-names:
     required: true
+
+  periph-use-soft-nss:
+     type: boolean
+     description: use soft NSS for this interface when in peripheral mode

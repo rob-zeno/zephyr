@@ -39,6 +39,7 @@ struct spi_stm32_config {
 #if DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi)
 	bool io_swap_enabled;
 #endif
+	bool peripheral_use_soft_nss;
 };
 
 #ifdef CONFIG_SPI_STM32_DMA

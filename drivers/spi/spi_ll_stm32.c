@@ -698,7 +698,12 @@ static int spi_stm32_configure(const struct device *dev,
 		LL_SPI_SetNSSMode(spi, LL_SPI_NSS_SOFT);
 	} else {
 		if (config->operation & SPI_OP_MODE_SLAVE) {
-			LL_SPI_SetNSSMode(spi, LL_SPI_NSS_HARD_INPUT);
+			if ( cfg->peripheral_use_soft_nss ) {
+				LL_SPI_SetNSSMode(spi, LL_SPI_NSS_SOFT);
+			}
+			else {
+				LL_SPI_SetNSSMode(spi, LL_SPI_NSS_HARD_INPUT);
+			}
 		} else {
 			LL_SPI_SetNSSMode(spi, LL_SPI_NSS_HARD_OUTPUT);
 		}
@@ -1628,6 +1633,7 @@ static const struct spi_stm32_config spi_stm32_cfg_##id = {		\
 	IF_ENABLED(DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi),		\
 		(.io_swap_enabled =					\
 			DT_INST_PROP(id, io_swap),))			\
+	.peripheral_use_soft_nss = DT_INST_PROP(id,periph_use_soft_nss) \
 };									\
 									\
 static struct spi_stm32_data spi_stm32_dev_data_##id = {		\
