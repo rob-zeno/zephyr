@@ -1,0 +1,12 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Texas Instruments BQ34Z100 fuel gauge. For more info visit
+  https://www.ti.com/product/BQ34Z100.
+
+
+compatible: "ti,bq34z100"
+
+include: [i2c-device.yaml, fuel-gauge.yaml]
