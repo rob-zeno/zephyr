@@ -1,0 +1,11 @@
+menuconfig BQ76952
+	bool "BQ76952 AFE (sensor driver with controls)"
+	default y
+	depends on DT_HAS_TI_BQ76952_ENABLED
+	select I2C
+	help
+	  Enable I2C-based driver for BQ76952 AFE
+
+if BQ76952
+
+endif
