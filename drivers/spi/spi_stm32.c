@@ -332,6 +332,13 @@ static uint8_t bits2bytes(spi_operation_t operation)
 }
 
 #ifdef CONFIG_SPI_STM32_DMA
+
+int stm32_spi_last_DMA_timed_out = 0;
+unsigned int stm32_spi_dma_timeouts = 0;
+unsigned int stm32_spi_dma_header_timeouts = 0;
+unsigned int stm32_spi_txc_tries = 0;
+unsigned int stm32_spi_txc_timeouts = 0;
+
 /* dummy buffer is used for transferring NOP when tx buf is null
  * and used as a dummy sink for when rx buf is null.
  */
@@ -518,6 +525,7 @@ static int spi_dma_move_tx_buffers(const struct device *dev, size_t len)
 	return spi_stm32_dma_tx_load(dev, data->ctx.tx_buf, dma_segment_len);
 }
 
+#if !defined(CONFIG_SPI_STM32H7_ALTERNATE_DMA)
 static int spi_dma_move_buffers(const struct device *dev, size_t len)
 {
 	int ret;
@@ -544,8 +552,10 @@ static void spi_dma_enable_requests(SPI_TypeDef *spi)
 		LL_SPI_EnableDMAReq_RX(spi);
 	}
 }
+#endif
 
 #if !defined(CONFIG_SPI_RTIO)
+#if !defined(CONFIG_SPI_STM32H7_ALTERNATE_DMA)
 static void spi_stm32_dma_tx_done(const struct device *dev)
 {
 	const struct spi_stm32_config *cfg = dev->config;
@@ -602,6 +612,7 @@ static void spi_stm32_dma_rx_done(const struct device *dev, const struct spi_con
 	}
 }
 #endif /* !CONFIG_SPI_RTIO */
+#endif /* !CONFIG_SPI_STM32H7_ALTERNATE_DMA */
 #endif /* CONFIG_SPI_STM32_DMA */
 
 /* Value to shift out when no application data needs transmitting. */
@@ -1465,6 +1476,7 @@ static int spi_stm32_configure(const struct device *dev,
 		LL_SPI_SetNSSMode(spi, LL_SPI_NSS_SOFT);
 	} else {
 		if ((config->operation & SPI_OP_MODE_SLAVE) != 0U) {
+			LOG_ERR("NSS_HARD_INPUT!");
 			LL_SPI_SetNSSMode(spi, LL_SPI_NSS_HARD_INPUT);
 		} else {
 			LL_SPI_SetNSSMode(spi, LL_SPI_NSS_HARD_OUTPUT);
@@ -1765,7 +1777,7 @@ end:
 
 #if defined(CONFIG_SPI_STM32_DMA)
 #if !defined(CONFIG_SPI_RTIO)
-
+#if !defined(CONFIG_SPI_STM32H7_ALTERNATE_DMA)
 static int wait_dma_rx_tx_done(const struct device *dev)
 {
 	struct spi_stm32_data *data = dev->data;
@@ -1799,6 +1811,81 @@ static int wait_dma_rx_tx_done(const struct device *dev)
 
 	return res;
 }
+#else
+static int wait_dma_rx_tx_done(const struct device *dev, bool *timedout)
+{
+	struct spi_stm32_data *data = dev->data;
+	int res = -1;
+	k_timeout_t timeout;
+	bool ignore_timeout = false;
+
+	*timedout = false;
+	struct stream *stream = &data->dma_tx;
+	size_t len = stream->dma_blk_cfg.block_size;
+
+	stm32_spi_last_DMA_timed_out = 0;
+	/*
+	 * In slave mode we do not know when the transaction will start. Hence,
+	 * it doesn't make sense to have timeout in this case.
+	 */
+	if (IS_ENABLED(CONFIG_SPI_SLAVE) && spi_context_is_slave(&data->ctx)) {
+		timeout = K_FOREVER;
+	} else {
+		timeout = K_MSEC(1000);
+	}
+
+	//printf( "SPI waiting DMA: %u\n", (unsigned int)len );
+	while (1) {
+		res = k_sem_take(&data->status_sem, timeout);
+		if (res != 0) {
+			if ( ( res == -EAGAIN ) && ( ignore_timeout ) )
+			{
+				stm32_spi_last_DMA_timed_out = 1;
+				if ( len != 5 )
+				{
+					//printf( "DMA timeout, len = %u\n", (unsigned int)len );
+					stm32_spi_dma_timeouts++;
+				}
+				else
+				{
+					stm32_spi_dma_header_timeouts++;
+				}
+				(*timedout) = true;
+				return 0;
+			}
+			// watch for timeout error...
+			return res;
+		}
+
+		if ((data->status_flags & SPI_STM32_DMA_ERROR_FLAG) != 0U) {
+			return -EIO;
+		}
+
+#ifndef CONFIG_SPI_STM32H7_ALTERNATE_DMA
+		if ((data->status_flags & SPI_STM32_DMA_DONE_FLAG) != 0U) {
+			return 0;
+		}
+#else
+		/* don't break out of loop until the DMA is COMPLETELY done ... */
+		if ( ( data->status_flags & SPI_STM32_DMA_DONE_FLAG ) == SPI_STM32_DMA_DONE_FLAG ) {
+			return 0;
+		}
+		else if ( data->status_flags & SPI_STM32_DMA_DONE_FLAG ) {
+			/* but reduce the timeout if we're only half-way done */
+			//if ( !K_TIMEOUT_EQ( timeout, K_FOREVER ) )
+			{
+				// not sure this is right, but experimenting
+				#define CONFIG_SPI_STM32_DMA_TIMEOUT	500
+				timeout = K_MSEC(CONFIG_SPI_STM32_DMA_TIMEOUT);
+				ignore_timeout = true;
+			}
+		}
+#endif
+	}
+
+	return res;
+}
+#endif
 
 #ifdef CONFIG_DCACHE
 static bool is_dummy_buffer(const struct spi_buf *buf)
@@ -1980,23 +2067,28 @@ static void dma_callback_sync(const struct device *spi_dev, uint32_t channel, in
 
 		if ((data->status_flags & SPI_STM32_DMA_ERROR_FLAG) != 0U) {
 			spi_stm32_iodev_complete(spi_dev, -EIO);
+			#error
 			return;
 		}
 
 #ifdef SPI_SR_FTLVL
 		while (LL_SPI_GetTxFIFOLevel(cfg->spi) > 0) {
+			#error
 		}
 #endif /* SPI_SR_FTLVL */
 
 #if DT_HAS_COMPAT_STATUS_OKAY(st_stm32h7_spi)
 		if (cfg->fifo_enabled && !LL_SPI_IsActiveFlag_EOT(cfg->spi)) {
 			LL_SPI_EnableIT_EOT(cfg->spi);
+			#error
 			return;
 		}
 #else
 #ifdef CONFIG_SPI_STM32_ERRATA_BUSY
+			#error
 		WAIT_FOR(!ll_spi_dma_busy(cfg->spi), CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT, k_yield());
 #else
+			#error
 		while (ll_spi_dma_busy(cfg->spi) && LL_SPI_IsEnabled(cfg->spi)) {
 			if (STM32_SPI_HALF_DUPLEX_RX == LL_SPI_GetTransferDirection(cfg->spi)) {
 				ll_disable_spi(cfg->spi);
@@ -2023,6 +2115,7 @@ static void dma_callback(const struct device *dma_dev, void *arg, uint32_t chann
 	ARG_UNUSED(dma_dev);
 
 #ifdef CONFIG_SPI_ASYNC
+#error
 	if (spi_data->ctx.asynchronous) {
 		dma_callback_async(dma_dev, spi_dev, channel, status);
 		return;
@@ -2032,6 +2125,7 @@ static void dma_callback(const struct device *dma_dev, void *arg, uint32_t chann
 }
 
 #if !defined(CONFIG_SPI_RTIO)
+#if !defined(CONFIG_SPI_STM32H7_ALTERNATE_DMA)
 static int transceive_dma(const struct device *dev,
 			  const struct spi_config *config,
 			  const struct spi_buf_set *tx_bufs,
@@ -2245,6 +2339,269 @@ release:
 
 	return ret;
 }
+#else // not used for now, but might need for alternate DMA?
+static int transceive_dma(const struct device *dev,
+			  const struct spi_config *config,
+			  const struct spi_buf_set *tx_bufs,
+			  const struct spi_buf_set *rx_bufs,
+			  bool asynchronous,
+			  spi_callback_t cb,
+			  void *userdata)
+{
+	const struct spi_stm32_config *cfg = dev->config;
+	struct spi_stm32_data *data = dev->data;
+	SPI_TypeDef *spi = cfg->spi;
+	int ret;
+	int err;
+
+	if (tx_bufs == NULL && rx_bufs == NULL) {
+		return 0;
+	}
+
+	if (asynchronous) {
+		return -ENOTSUP;
+	}
+
+#ifdef CONFIG_DCACHE
+	if ((tx_bufs != NULL && !spi_buf_set_in_nocache(tx_bufs)) ||
+	    (rx_bufs != NULL && !spi_buf_set_in_nocache(rx_bufs))) {
+		LOG_ERR("SPI DMA transfers not supported on cached memory");
+		return -ENOTSUP;
+	}
+#endif /* CONFIG_DCACHE */
+
+	spi_context_lock(&data->ctx, asynchronous, cb, userdata, config);
+
+	spi_stm32_pm_policy_state_lock_get(dev);
+
+	k_sem_reset(&data->status_sem);
+
+	ret = spi_stm32_configure(dev, config, tx_bufs != NULL);
+	if (ret != 0) {
+		goto end;
+	}
+
+	uint32_t transfer_dir = LL_SPI_GetTransferDirection(spi);
+
+	if (transfer_dir == LL_SPI_HALF_DUPLEX_RX) {
+		ret = spi_stm32_set_transfer_size(dev, config, tx_bufs, rx_bufs);
+
+		if (ret < 0) {
+			goto end;
+		}
+	}
+
+	/* Set buffers info */
+	spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, bits2bytes(config->operation));
+
+	LL_SPI_DisableDMAReq_RX(spi);
+	LL_SPI_DisableDMAReq_TX(spi);
+
+	uint8_t dfs = bits2bytes(config->operation);
+	struct dma_config *rx_cfg = &data->dma_rx.dma_cfg, *tx_cfg = &data->dma_tx.dma_cfg;
+
+	rx_cfg->source_data_size = rx_cfg->source_burst_length = dfs;
+	rx_cfg->dest_data_size = rx_cfg->dest_burst_length = dfs;
+	tx_cfg->source_data_size = tx_cfg->source_burst_length = dfs;
+	tx_cfg->dest_data_size = tx_cfg->dest_burst_length = dfs;
+
+	while (data->ctx.rx_len > 0 || data->ctx.tx_len > 0) {
+		size_t dma_len;
+
+		data->status_flags = 0;
+
+		if (transfer_dir == LL_SPI_FULL_DUPLEX) {
+			dma_len = spi_context_max_continuous_chunk(&data->ctx);
+		} else if (transfer_dir == LL_SPI_HALF_DUPLEX_TX) {
+			dma_len = data->ctx.tx_len;
+		} else {
+			dma_len = data->ctx.rx_len;
+		}
+
+		/*
+			STM32U5xxx Reference manual, 68.4.15:
+
+			When starting communication using DMA, to prevent DMA channel management raising
+			error events, these steps must be followed in order:
+
+			1. Enable DMA Rx buffer in the RXDMAEN bit in the SPI_CFG1 register, if DMA Rx is
+				used.
+
+				HOWEVER: HAL code does this AFTER enabling data in DMA registers, so
+				we do what the HAL does.
+
+			2. Enable DMA requests for Tx and Rx in DMA registers, if the DMA is used.
+			3. Enable DMA Tx buffer in the TXDMAEN bit in the SPI_CFG1 register, if DMA Tx is
+				used.
+			4. Enable the SPI by setting the SPE bit.
+		*/
+
+		ret = spi_dma_move_rx_buffers(dev, dma_len);
+		if ( ret != 0 ) {
+			LOG_ERR("stm32: spi_dma_move_rx_buffers %d", ret);
+			goto exit_loop;
+		}
+
+		// enable RX DMA request register
+		LL_SPI_EnableDMAReq_RX(spi);
+
+		// set up TX DMA
+		ret = spi_dma_move_tx_buffers( dev, dma_len );
+		if ( ret != 0 ) {
+			LOG_ERR("stm32: spi_dma_move_tx_buffers %d", ret);
+			goto exit_loop;
+		}
+
+		// enable TX DMA request register
+		LL_SPI_EnableDMAReq_TX(spi);
+
+#if 0
+		#warning "UGLY"
+		// this is a really ugly hack -- what are we waiting on? why does this make it better?
+		if ( dma_len == 5 )
+		{
+			k_sleep( K_USEC(10) );
+		}
+#endif
+
+#if 0
+		if ( 0 )
+		{
+			dump_spi_regs( "SPI2", SPI2 );
+			dump_gpdma_regs( "GPDMA1", GPDMA1 );
+			dump_gpdma_channel_regs( "GPDMA1_CH8", GPDMA1_Channel8 );
+			dump_gpdma_channel_regs( "GPDMA1_CH9", GPDMA1_Channel9 );
+		}
+#endif
+
+		// enable SPI
+		LL_SPI_Enable(spi);
+
+		if (LL_SPI_GetMode(spi) == LL_SPI_MODE_MASTER) {
+			LL_SPI_StartMasterTransfer(spi);
+		}
+
+		// enable CS control (in master mode)
+		if (LL_SPI_GetMode(spi) == LL_SPI_MODE_MASTER) {
+			/* This is turned off in spi_stm32_complete(). */
+			spi_stm32_cs_control(dev, true);
+		}
+
+		bool timedout = false;
+		ret = wait_dma_rx_tx_done(dev, &timedout);
+		if (ret != 0) {
+			break;
+		}
+
+		if (!timedout)
+		{
+			#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100	// 100 ms is WAY too much time
+
+			uint64_t start_to, now;
+			start_to = k_uptime_get();
+			stm32_spi_txc_tries++;
+
+	#ifdef SPI_SR_FTLVL
+			#error
+			while (LL_SPI_GetTxFIFOLevel(spi) > 0) {
+			}
+	#endif /* SPI_SR_FTLVL */
+
+	#ifdef CONFIG_SPI_STM32_ERRATA_BUSY
+			#error
+			WAIT_FOR(!ll_spi_dma_busy(spi), CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT, k_yield());
+	#else
+			/* wait until spi is no more busy (spi TX fifo is really empty) */
+			while (ll_spi_dma_busy(spi) && LL_SPI_IsEnabled(spi)) {
+				uint32_t width = SPI_WORD_SIZE_GET(data->ctx.config->operation);
+				/* The TXC flag is not raised at the end of 9, 17 or 25
+				 * bit transfer, so disable the SPI in these cases to avoid being stuck.
+				 */
+				if ((width == 9U) || (width == 17U) || (width == 25U)) {
+					LOG_ERR( "stm32: weird word size?" );
+					k_usleep(1000);
+					ll_disable_spi(spi);
+				}
+
+				#define CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT	100	// 100 ms is WAY too much time
+
+				now = k_uptime_get();
+				if ( now - start_to > CONFIG_SPI_STM32_BUSY_FLAG_TIMEOUT )
+				{
+					LOG_ERR( "stm32: timeout waiting for TXC" );
+					stm32_spi_txc_timeouts++;
+					break;
+				}
+
+			}
+	#endif /* CONFIG_SPI_STM32_ERRATA_BUSY */
+		}
+
+		/*
+			STM32U5xxx Reference manual, 68.4.15:
+
+			To close communication it is mandatory to follow these steps in order:
+
+			1. Disable DMA request for Tx and Rx in the DMA registers, if the DMA issued
+			2. Disable the SPI by following the SPI disable procedure.
+			3. Disable DMA Tx and Rx buffers by clearing the TXDMAEN and RXDMAEN bits in the
+				SPI_CFG1 register, if DMA Tx and/or DMA Rx are used
+		*/
+
+exit_loop:
+
+		if (transfer_dir == LL_SPI_FULL_DUPLEX) {
+			spi_context_update_tx(&data->ctx, dfs, dma_len);
+			spi_context_update_rx(&data->ctx, dfs, dma_len);
+		} else if (transfer_dir == LL_SPI_HALF_DUPLEX_TX) {
+			spi_context_update_tx(&data->ctx, dfs, dma_len);
+		} else {
+			spi_context_update_rx(&data->ctx, dfs, dma_len);
+		}
+
+		// disable DMA TX and RX
+		err = dma_stop(data->dma_rx.dma_dev, data->dma_rx.channel);
+		if (err) {
+			LOG_DBG("Rx dma_stop failed with error %d", err);
+		}
+		err = dma_stop(data->dma_tx.dma_dev, data->dma_tx.channel);
+		if (err) {
+			LOG_DBG("Tx dma_stop failed with error %d", err);
+		}
+
+		// disable SPI following the procedure
+		ll_disable_spi(spi);
+
+		// disable DMA TX and RX configuration bits
+		LL_SPI_DisableDMAReq_TX(spi);
+		LL_SPI_DisableDMAReq_RX(spi);
+
+		if ( ret != 0 )
+			break;
+	}
+
+	// re-enable SPI to complete the transaction
+	LL_SPI_Enable(spi);
+	spi_stm32_complete(dev, ret);
+	// technically I think spi SHOULD be disabled as we exit this routine?
+#if 1
+	LL_SPI_Disable(spi);
+#endif
+
+#ifdef CONFIG_SPI_SLAVE
+	if (spi_context_is_slave(&data->ctx) && ret == 0) {
+		ret = data->ctx.recv_frames;
+	}
+#endif /* CONFIG_SPI_SLAVE */
+
+end:
+	spi_stm32_pm_policy_state_lock_put(dev);
+
+	spi_context_release(&data->ctx, ret);
+
+	return ret;
+}
+#endif /* !CONFIG_SPI_STM32H7_ALTERNATE_DMA */
 #endif /* !CONFIG_SPI_RTIO */
 #endif /* CONFIG_SPI_STM32_DMA */
 
