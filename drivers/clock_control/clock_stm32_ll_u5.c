@@ -752,6 +752,8 @@ static int set_up_plls(void)
 	return 0;
 }
 
+// rob@zenomoto.com - disable this for now, but revisit (see SW-1160)
+#if 0
 /*
  * MSIS and MSIK in PLL mode depends on LSE at 32768Hz (mandatory if present)
  * If both MSIS and MSIK are in PLL mode, they must use the same MSIRC source,
@@ -772,6 +774,7 @@ BUILD_ASSERT(MSI_PLL_SOURCE_CLOCK_IS_VALID || !STM32_MSIK_PLL_MODE,
 BUILD_ASSERT(!(STM32_MSIS_PLL_MODE && STM32_MSIK_PLL_MODE) ||
 	     ((STM32_MSIS_RANGE / 4) == (STM32_MSIK_RANGE / 4)),
 	     "Inconsistent MSIRC source for MSIS and MSIK PLL mode");
+#endif
 
 static void set_up_fixed_clock_sources(void)
 {
