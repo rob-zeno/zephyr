@@ -1588,6 +1588,9 @@ static int tls_mbedtls_handshake(struct tls_context *context,
 	while ((ret = mbedtls_ssl_handshake(&context->active_session->ssl)) != 0) {
 		if (ret == MBEDTLS_ERR_SSL_WANT_READ ||
 		    ret == MBEDTLS_ERR_SSL_WANT_WRITE ||
+#if defined(CONFIG_MBEDTLS_SSL_SESSION_TICKETS)
+		    ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET ||
+#endif
 		    ret == MBEDTLS_ERR_SSL_ASYNC_IN_PROGRESS ||
 		    ret == MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS) {
 			int timeout_ms;
@@ -1772,6 +1775,17 @@ static int tls_mbedtls_init(struct tls_context *context, bool is_server)
 	switch (context->tls_version) {
 	case NET_IPPROTO_TLS_1_3:
 		mbedtls_ssl_conf_min_tls_version(&context->config, MBEDTLS_SSL_VERSION_TLS1_3);
+#if defined(CONFIG_MBEDTLS_SSL_SESSION_TICKETS)
+		if ( role == MBEDTLS_SSL_IS_CLIENT ) {
+			#if CONFIG_MBEDTLS_SSL_SESSION_TICKETS
+			int opt = 1;
+			#else
+			#error
+			int opt = 0;
+			#endif
+			mbedtls_ssl_conf_session_tickets( &context->config, opt );
+		}
+#endif
 		break;
 	case NET_IPPROTO_TLS_1_2:
 	case NET_IPPROTO_DTLS_1_2:
@@ -2793,6 +2807,124 @@ free_fd:
 	return -1;
 }
 
+#define CONFIG_TLS_HOSTNAME_SESSION_CACHE	2
+
+K_MUTEX_DEFINE( tls_hostname_session_cache_lock );
+
+static struct tls_hostname_session_cache_entry {
+	char hostname[256];
+
+	uint8_t *session_data;
+	size_t session_data_len;
+
+	uint64_t last_used;
+} tls_hostname_session_cache[ CONFIG_TLS_HOSTNAME_SESSION_CACHE ] = { 0 };
+
+static int tls_hostname_find_session( const char *hostname, struct mbedtls_ssl_session *session )
+{
+	int result = -1;
+	struct tls_hostname_session_cache_entry *entry;
+	k_mutex_lock( &tls_hostname_session_cache_lock, K_FOREVER );
+
+	unsigned int i;
+	for ( i = 0; i < ARRAY_SIZE( tls_hostname_session_cache ); i++ )
+	{
+		entry = &tls_hostname_session_cache[i];
+		if ( strcmp( entry->hostname, hostname ) == 0 )
+		{
+			result = mbedtls_ssl_session_load( session, entry->session_data, entry->session_data_len );
+			break;
+		}
+	}
+
+	k_mutex_unlock( &tls_hostname_session_cache_lock );
+
+	//printf( "tls_hostname_find_session: '%s' (%d)\n", hostname, result );
+	return result;
+}
+
+static int tls_hostname_store_session( const char *hostname, const struct mbedtls_ssl_session *session )
+{
+	int result = -1;
+	uint64_t oldest = k_uptime_get();
+	int oldest_item = -1;
+	int unused_item = -1;
+	int found_item = -1;
+	struct tls_hostname_session_cache_entry *entry;
+
+	k_mutex_lock( &tls_hostname_session_cache_lock, K_FOREVER );
+
+	unsigned int i;
+	for ( i = 0; i < ARRAY_SIZE( tls_hostname_session_cache ); i++ )
+	{
+		entry = &tls_hostname_session_cache[i];
+		if ( strcmp( entry->hostname, hostname ) == 0 )
+		{
+			found_item = i;
+			break;
+		}
+		else
+		{
+			if ( tls_hostname_session_cache[i].hostname[0] == 0 )
+			{
+				// we can use this one if we want
+				unused_item = i;
+			}
+			else
+			{
+				// this item is used, but could be tossed if we must
+				if ( tls_hostname_session_cache[i].last_used <= oldest )
+				{
+					oldest_item = i;
+					oldest = tls_hostname_session_cache[i].last_used;
+				}
+			}
+		}
+	}
+
+	{
+		int slot = ( found_item != -1 ) ? found_item : ( unused_item != -1 ) ? unused_item : oldest_item;
+
+		if ( slot >= 0 )
+		{
+			entry = &tls_hostname_session_cache[ slot ];
+
+			if ( entry->session_data != NULL )
+			{
+				mbedtls_free( entry->session_data );
+				entry->session_data = NULL;
+				entry->hostname[0] = 0;
+			}
+			entry->session_data_len = 0;
+
+			size_t session_len = 0;
+			int err;
+			err = mbedtls_ssl_session_save( session, NULL, 0, &session_len );
+			if ( ( err == 0 ) || ( err == MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL ) )
+			{
+				if ( session_len > 0 )
+				{
+					entry->session_data = mbedtls_calloc( 1, session_len );
+					if ( entry->session_data != NULL )
+					{
+						strncpy( entry->hostname, hostname, sizeof( entry->hostname ) - 1 );
+						entry->session_data_len = session_len;
+						mbedtls_ssl_session_save( session, entry->session_data, entry->session_data_len, &session_len );
+
+						//printf( "tls_hostname_store_session: '%s' stored to slot %d (%d, %d, %d) (%p, %u)\n", hostname, slot, found_item, unused_item, oldest_item, entry->session_data, (unsigned int)entry->session_data_len );
+						result = 0;
+					}
+				}
+			}
+		}
+	}
+
+	k_mutex_unlock( &tls_hostname_session_cache_lock );
+
+	return result;
+}
+
+
 int ztls_close_ctx(struct tls_context *ctx, int sock)
 {
 	struct tls_session_context *session_ctx = NULL;
@@ -2804,6 +2936,26 @@ int ztls_close_ctx(struct tls_context *ctx, int sock)
 	SYS_SLIST_FOR_EACH_CONTAINER(&ctx->sessions, session_ctx, node) {
 		(void)mbedtls_ssl_close_notify(&session_ctx->ssl);
 	}
+
+#if defined(CONFIG_MBEDTLS_SSL_SESSION_TICKETS)
+	if ( ( ctx->tls_version == NET_IPPROTO_TLS_1_3 ) && ( ctx->options.is_hostname_set ) )
+	{
+		const char *hostname = mbedtls_ssl_get_hostname( &ctx->active_session->ssl );
+		if ( ( hostname != NULL ) && ( hostname[0] != 0 ) )
+		{
+			mbedtls_ssl_session saved_session;
+			mbedtls_ssl_session_init( &saved_session );
+			// This deep-copies the ticket and state from the active SSL context
+			mbedtls_ssl_get_session( &ctx->active_session->ssl, &saved_session );
+
+			// now we have it, we need to cache it for future use to this host name
+			tls_hostname_store_session( hostname, &saved_session );
+
+			mbedtls_ssl_session_free( &saved_session );
+		}
+	}
+#endif
+
 
 	err = tls_release(ctx);
 	ret = zsock_close(ctx->sock);
@@ -2871,6 +3023,25 @@ int ztls_connect_ctx(struct tls_context *ctx, const struct net_sockaddr *addr,
 		ctx->flags = 0;
 
 		tls_session_restore(ctx, addr, addrlen);
+
+#if defined(CONFIG_MBEDTLS_SSL_SESSION_TICKETS)
+		if ( ( ctx->tls_version == NET_IPPROTO_TLS_1_3 ) && ( ctx->options.is_hostname_set ) )
+		{
+			const char *hostname = mbedtls_ssl_get_hostname( &ctx->active_session->ssl );
+			if ( ( hostname != NULL ) && ( hostname[0] != 0 ) )
+			{
+				mbedtls_ssl_session saved_session;
+				mbedtls_ssl_session_init( &saved_session );
+				if ( tls_hostname_find_session( hostname, &saved_session ) == 0 )
+				{
+					printf( "restoring TLS session from cached hostname\n" );
+					mbedtls_ssl_session_reset( &ctx->active_session->ssl );
+					mbedtls_ssl_set_session( &ctx->active_session->ssl, &saved_session );
+				}
+				mbedtls_ssl_session_free( &saved_session );
+			}
+		}
+#endif
 
 		/* TODO For simplicity, TLS handshake blocks the socket
 		 * even for non-blocking socket.
@@ -3824,6 +3995,15 @@ static int tls_data_check(struct tls_context *ctx)
 		    ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
 			return 0;
 		}
+
+#if defined(CONFIG_MBEDTLS_SSL_SESSION_TICKETS)
+		// combine with above?
+		if ( ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET ) {
+			//#error
+			return 0;
+		}
+#endif
+
 
 		NET_ERR("%s data check error: -%x", "TLS", -ret);
 
