@@ -51,16 +51,57 @@ struct prot_range {
 };
 
 struct mcux_c40_cfg {
-	uint32_t base;        /* flash memory-mapping address */
-	uint32_t size;        /* total bytes covered by this instance */
+	uint32_t code_base;    /* flash memory-mapping address for code bank */
+	uint32_t code_size;    /* total bytes in code bank */
+
 	uint32_t erase_block; /* 8 KiB on C40 */
 	uint32_t write_block; /* 8 bytes min. program unit */
+
+	uint32_t data_base;   /* flash memory-mapping address for data bank */
+	uint32_t data_size;   /* total bytes in code bank */
+#if 0
+	uint32_t utest_base;
+	uint32_t utest_size;
+#endif
+
 	const struct flash_parameters *params;
 #if defined(CONFIG_SOC_FLASH_MCUX_C40_APPLY_PROTECTION)
 	const struct prot_range *prot_tbl;
 	size_t prot_cnt;
 #endif
 };
+
+static inline bool flash_mcux_c40_calculate_base_and_offset( const struct mcux_c40_cfg *cfg, uint32_t *base, uint32_t *io_offset, uint32_t len )
+{
+	uint32_t offset = (*io_offset);
+	if ( ( offset >= 0 ) && ( offset < cfg->code_size ) )
+	{
+		if ( offset + len > cfg->code_size )
+		{
+			return false;
+		}
+		*base = cfg->code_base;
+		// code bank is at 0, so no need to account for offset
+		return true;
+	}
+
+	if ( ( offset >= cfg->code_size ) && ( ( offset - cfg->code_size ) < cfg->data_size ) )
+	{
+		*base = cfg->data_base;
+		// must now adjust offset
+		offset -= cfg->code_size;
+
+		if ( offset + len > cfg->data_size )
+		{
+			return false;
+		}
+
+		*io_offset = offset;
+		return true;
+	}
+
+	return false;
+}
 
 struct mcux_c40_data {
 	struct k_spinlock lock;
@@ -75,19 +116,22 @@ static inline bool intersects(uint32_t a_off, uint32_t a_len, uint32_t b_off, ui
 	return (a_off < b_end) && (b_off < a_end);
 }
 
-static int flash_mcux_c40_read(const struct device *dev, off_t off, void *buf, size_t len)
+static int flash_mcux_c40_read(const struct device *dev, off_t offt, void *buf, size_t len)
 {
 	const struct mcux_c40_cfg *cfg = dev->config;
 
-	if ((off < 0) || ((size_t)off + len > cfg->size)) {
+	uint32_t base;
+	uint32_t off = offt;
+	if (!flash_mcux_c40_calculate_base_and_offset( cfg, &base, &off, len ) ) {
 		return -EINVAL;
 	}
 
-	memcpy(buf, (const void *)(cfg->base + (uintptr_t)off), len);
+	memcpy(buf, (const void *)(base + (uintptr_t)off), len);
+
 	return 0;
 }
 
-static int flash_mcux_c40_write(const struct device *dev, off_t off, const void *buf, size_t len)
+static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void *buf, size_t len)
 {
 	const struct mcux_c40_cfg *cfg = dev->config;
 	struct mcux_c40_data *data = dev->data;
@@ -95,7 +139,9 @@ static int flash_mcux_c40_write(const struct device *dev, off_t off, const void 
 	status_t st;
 
 	/* Bounds check */
-	if ((off < 0) || ((size_t)off + len > cfg->size)) {
+	uint32_t base;
+	uint32_t off = offt;
+	if (!flash_mcux_c40_calculate_base_and_offset( cfg, &base, &off, len ) ) {
 		return -EINVAL;
 	}
 
@@ -116,7 +162,7 @@ static int flash_mcux_c40_write(const struct device *dev, off_t off, const void 
 
 	z_barrier_isync_fence_full();
 
-	st = FLASH_Program(&data->cfg, (uint32_t)(cfg->base + (uintptr_t)off), (uint32_t *)buf,
+	st = FLASH_Program(&data->cfg, (uint32_t)(base + (uintptr_t)off), (uint32_t *)buf,
 			   (uint32_t)len);
 
 	barrier_dsync_fence_full();
@@ -124,21 +170,24 @@ static int flash_mcux_c40_write(const struct device *dev, off_t off, const void 
 	k_spin_unlock(&data->lock, key);
 
 	/* The array changed behind the CPU; drop stale D-cache lines covering the range */
-	sys_cache_data_invd_range((void *)(cfg->base + (uintptr_t)off), len);
+	sys_cache_data_invd_range((void *)(base + (uintptr_t)off), len);
 
 	return mcux_to_errno(st);
 }
 
-static int flash_mcux_c40_erase(const struct device *dev, off_t off, size_t len)
+static int flash_mcux_c40_erase(const struct device *dev, off_t offt, size_t len)
 {
 	const struct mcux_c40_cfg *cfg = dev->config;
 	struct mcux_c40_data *data = dev->data;
 	k_spinlock_key_t key;
 	status_t st;
 
-	if ((off < 0) || ((size_t)off + len > cfg->size)) {
+	uint32_t base;
+	uint32_t off = offt;
+	if (!flash_mcux_c40_calculate_base_and_offset( cfg, &base, &off, len ) ) {
 		return -EINVAL;
 	}
+
 	if (((uintptr_t)off % cfg->erase_block) != 0 || (len % cfg->erase_block) != 0) {
 		return -EINVAL;
 	}
@@ -149,14 +198,15 @@ static int flash_mcux_c40_erase(const struct device *dev, off_t off, size_t len)
 
 	z_barrier_isync_fence_full();
 
-	st = FLASH_Erase(&data->cfg, (uint32_t)(cfg->base + (uintptr_t)off), (uint32_t)len,
+	st = FLASH_Erase(&data->cfg, (uint32_t)(base + (uintptr_t)off), (uint32_t)len,
 			 kFLASH_ApiEraseKey);
 
 	barrier_dsync_fence_full();
 
 	k_spin_unlock(&data->lock, key);
 
-	sys_cache_data_invd_range((void *)(cfg->base + (uintptr_t)off), len);
+	sys_cache_data_invd_range((void *)(base + (uintptr_t)off), len);
+
 	return mcux_to_errno(st);
 }
 
@@ -168,17 +218,19 @@ static const struct flash_parameters *flash_mcux_c40_get_parameters(const struct
 }
 
 #ifdef CONFIG_FLASH_PAGE_LAYOUT
+
+struct flash_pages_layout c40_layout[] = {
+	// pflash
+	{ .pages_count = DT_REG_SIZE( DT_NODELABEL( pflash ) ) / DT_PROP( DT_NODELABEL( flash0 ), erase_block_size ), .pages_size = DT_PROP( DT_NODELABEL( flash0 ), erase_block_size )},
+	// dflash
+	{ .pages_count = DT_REG_SIZE( DT_NODELABEL( dflash ) ) / DT_PROP( DT_NODELABEL( flash0 ), erase_block_size ), .pages_size = DT_PROP( DT_NODELABEL( flash0 ), erase_block_size )},
+};
+
 static void flash_mcux_c40_pages_layout(const struct device *dev,
 				  const struct flash_pages_layout **layout, size_t *layout_size)
 {
-	const struct mcux_c40_cfg *cfg = dev->config;
-	static struct flash_pages_layout l;
-
-	l.pages_count = cfg->size / cfg->erase_block;
-	l.pages_size = cfg->erase_block;
-
-	*layout = &l;
-	*layout_size = 1;
+	*layout = c40_layout;
+	*layout_size = 2;
 }
 #endif
 
@@ -267,8 +319,8 @@ static int flash_mcux_c40_init(const struct device *dev)
 		return mcux_to_errno(st);
 	}
 
-	LOG_DBG("C40 flash: base=0x%lx size=0x%lx erase=0x%lx write=0x%lx",
-		(unsigned long)cfg->base, (unsigned long)cfg->size, (unsigned long)cfg->erase_block,
+	LOG_DBG("C40 flash: erase=0x%lx write=0x%lx",
+		(unsigned long)cfg->erase_block,
 		(unsigned long)cfg->write_block);
 
 #if defined(CONFIG_SOC_FLASH_MCUX_C40_APPLY_PROTECTION)
@@ -301,8 +353,14 @@ static int flash_mcux_c40_init(const struct device *dev)
 		nprot_al++;
 	}
 
+#if 0
 	st = flash_c40_apply_protection(data, cfg->base, cfg->size, cfg->erase_block, prot_aligned,
 				  nprot_al);
+#else
+	// get from DTS property!
+	st = flash_c40_apply_protection(data, 0x400000, cfg->size, cfg->erase_block, prot_aligned,
+				  nprot_al);
+#endif
 	if (st != kStatus_FLASH_Success) {
 		LOG_ERR("Protection apply failed: %d", (int)st);
 		return mcux_to_errno(st);
@@ -324,9 +382,18 @@ static DEVICE_API(flash, mcux_c40_api) = {
 };
 
 /* Controller node for this instance */
-#define C40_CTRL_NODE(inst)  DT_DRV_INST(inst)
+#define C40_CTRL_NODE(inst)   DT_DRV_INST(inst)
 
-#define C40_FLASH_NODE(inst) DT_INST_CHILD(inst, flash_0)
+#define C40_FLASH_NODE(inst)  DT_INST_CHILD(inst,flash_0)
+
+#define C40_PFLASH_NODE(inst) DT_NODELABEL( pflash )
+
+#define C40_DFLASH_NODE(inst) DT_NODELABEL( dflash )
+
+
+// NOTE: all this partition table protection is too knowledgeable about the rest
+//	of the system, including partition names, etc -- should be done
+//	OUTSIDE driver (though driver might need to expose API)
 
 /* Get the partition table properties of this instance's flash */
 #define C40_PROT_ENTRY(lbl, inst)								\
@@ -367,8 +434,10 @@ static DEVICE_API(flash, mcux_c40_api) = {
 	C40_MAKE_PROT_TBL(inst);								\
 	C40_PARAMS(inst);									\
 	static const struct mcux_c40_cfg mcux_c40_cfg_##inst = {				\
-		.base        = DT_REG_ADDR(C40_FLASH_NODE(inst)),				\
-		.size        = DT_REG_SIZE(C40_FLASH_NODE(inst)),				\
+		.code_base     = DT_REG_ADDR(C40_PFLASH_NODE(inst)),				\
+		.code_size     = DT_REG_SIZE(C40_PFLASH_NODE(inst)),				\
+		.data_base     = DT_REG_ADDR(C40_DFLASH_NODE(inst)),				\
+		.data_size     = DT_REG_SIZE(C40_DFLASH_NODE(inst)),				\
 		.erase_block = DT_PROP(C40_FLASH_NODE(inst), erase_block_size),			\
 		.write_block = DT_PROP(C40_FLASH_NODE(inst), write_block_size),			\
 		.params      = &mcux_c40_params_##inst,						\
