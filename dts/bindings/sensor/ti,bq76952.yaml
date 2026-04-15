@@ -1,0 +1,5 @@
+description: Texas Instruments BQ76952 AFE binding
+
+compatible: "ti,bq76952"
+
+
