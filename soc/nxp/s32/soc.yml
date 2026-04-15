@@ -14,6 +14,9 @@ family:
   - name: s32k3
     socs:
     - name: s32k344
+    - name: s32k311
+    - name: s32k312
+    - name: s32k322
   - name: s32k5
     socs:
     - name: s32k566

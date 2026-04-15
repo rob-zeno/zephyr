@@ -11,44 +11,60 @@
 
 /* Destructive Event Status Register */
 #define MC_RGM_DES                      0x0
+#ifndef MC_RGM_DES_F_POR_MASK
 #define MC_RGM_DES_F_POR_MASK           BIT(0)
 #define MC_RGM_DES_F_POR(v)             FIELD_PREP(MC_RGM_DES_F_POR_MASK, (v))
+#endif
 /* Functional / External Reset Status Register */
 #define MC_RGM_FES                      0x8
+#ifndef MC_RGM_FES_F_EXR_MASK
 #define MC_RGM_FES_F_EXR_MASK           BIT(0)
 #define MC_RGM_FES_F_EXR(v)             FIELD_PREP(MC_RGM_FES_F_EXR_MASK, (v))
+#endif
 /* Functional Event Reset Disable Register */
 #define MC_RGM_FERD                     0xc
 /* Functional Bidirectional Reset Enable Register */
 #define MC_RGM_FBRE                     0x10
 /* Functional Reset Escalation Counter Register */
 #define MC_RGM_FREC                     0x14
+#ifndef MC_RGM_FREC_FREC_MASK
 #define MC_RGM_FREC_FREC_MASK           GENMASK(3, 0)
 #define MC_RGM_FREC_FREC(v)             FIELD_PREP(MC_RGM_FREC_FREC_MASK, (v))
+#endif
 /* Functional Reset Escalation Threshold Register */
 #define MC_RGM_FRET                     0x18
+#ifndef MC_RGM_FRET_FRET_MASK
 #define MC_RGM_FRET_FRET_MASK           GENMASK(3, 0)
 #define MC_RGM_FRET_FRET(v)             FIELD_PREP(MC_RGM_FRET_FRET_MASK, (v))
+#endif
 /* Destructive Reset Escalation Threshold Register */
 #define MC_RGM_DRET                     0x1c
+#ifndef MC_RGM_DRET_DRET_MASK
 #define MC_RGM_DRET_DRET_MASK           GENMASK(3, 0)
 #define MC_RGM_DRET_DRET(v)             FIELD_PREP(MC_RGM_DRET_DRET_MASK, (v))
+#endif
 /* External Reset Control Register */
 #define MC_RGM_ERCTRL                   0x20
+#ifndef MC_RGM_ERCTRL_ERASSERT_MASK
 #define MC_RGM_ERCTRL_ERASSERT_MASK     BIT(0)
 #define MC_RGM_ERCTRL_ERASSERT(v)       FIELD_PREP(MC_RGM_ERCTRL_ERASSERT_MASK, (v))
+#endif
 /* Reset During Standby Status Register */
 #define MC_RGM_RDSS                     0x24
+#ifndef MC_RGM_RDSS_DES_RES_MASK
 #define MC_RGM_RDSS_DES_RES_MASK        BIT(0)
 #define MC_RGM_RDSS_DES_RES(v)          FIELD_PREP(MC_RGM_RDSS_DES_RES_MASK, (v))
 #define MC_RGM_RDSS_FES_RES_MASK        BIT(1)
 #define MC_RGM_RDSS_FES_RES(v)          FIELD_PREP(MC_RGM_RDSS_FES_RES_MASK, (v))
+#endif
 /* Functional Reset Entry Timeout Control Register */
 #define MC_RGM_FRENTC                   0x28
+#ifndef MC_RGM_FRENTC_FRET_EN_MASK
 #define MC_RGM_FRENTC_FRET_EN_MASK      BIT(0)
 #define MC_RGM_FRENTC_FRET_EN(v)        FIELD_PREP(MC_RGM_FRENTC_FRET_EN_MASK, (v))
 #define MC_RGM_FRENTC_FRET_TIMEOUT_MASK GENMASK(31, 1)
 #define MC_RGM_FRENTC_FRET_TIMEOUT(v)   FIELD_PREP(MC_RGM_FRENTC_FRET_TIMEOUT_MASK, (v))
+#endif
 /* Low Power Debug Control Register */
 #define MC_RGM_LPDEBUG                  0x2c
 #define MC_RGM_LPDEBUG_LP_DBG_EN_MASK   BIT(0)

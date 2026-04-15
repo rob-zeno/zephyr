@@ -13,30 +13,46 @@
 
 /* Control Key Register */
 #define MC_ME_CTL_KEY                   0x0
+#ifndef MC_ME_CTL_KEY_KEY_MASK
 #define MC_ME_CTL_KEY_KEY_MASK          GENMASK(15, 0)
+#endif
+#ifndef MC_ME_CTL_KEY_KEY
 #define MC_ME_CTL_KEY_KEY(v)            FIELD_PREP(MC_ME_CTL_KEY_KEY_MASK, (v))
+#endif
 /* Mode Configuration Register */
 #define MC_ME_MODE_CONF                 0x4
+//#if 0
+#ifndef MC_ME_MODE_CONF_DEST_RST_MASK
 #define MC_ME_MODE_CONF_DEST_RST_MASK   BIT(0)
 #define MC_ME_MODE_CONF_DEST_RST(v)     FIELD_PREP(MC_ME_MODE_CONF_DEST_RST_MASK, (v))
 #define MC_ME_MODE_CONF_FUNC_RST_MASK   BIT(1)
 #define MC_ME_MODE_CONF_FUNC_RST(v)     FIELD_PREP(MC_ME_MODE_CONF_FUNC_RST_MASK, (v))
 #define MC_ME_MODE_CONF_STANDBY_MASK    BIT(15)
 #define MC_ME_MODE_CONF_STANDBY(v)      FIELD_PREP(MC_ME_MODE_CONF_STANDBY_MASK, (v))
+#endif
 /* Mode Update Register */
 #define MC_ME_MODE_UPD                  0x8
+//#if 0
+#ifndef MC_ME_MODE_UPD_MODE_UPD_MASK
 #define MC_ME_MODE_UPD_MODE_UPD_MASK    BIT(0)
 #define MC_ME_MODE_UPD_MODE_UPD(v)      FIELD_PREP(MC_ME_MODE_UPD_MODE_UPD_MASK, (v))
+#endif
 /* Mode Status Register */
 #define MC_ME_MODE_STAT                 0xc
+//#if 0
+#ifndef MC_ME_MODE_STAT_PREV_MODE_MASK
 #define MC_ME_MODE_STAT_PREV_MODE_MASK  BIT(0)
 #define MC_ME_MODE_STAT_PREV_MODE(v)    FIELD_PREP(MC_ME_MODE_STAT_PREV_MODE_MASK, (v))
+#endif
 /* Main Core ID Register */
 #define MC_ME_MAIN_COREID               0x10
+//#if 0
+#ifndef MC_ME_MAIN_COREID_CIDX_MASK
 #define MC_ME_MAIN_COREID_CIDX_MASK     GENMASK(2, 0)
 #define MC_ME_MAIN_COREID_CIDX(v)       FIELD_PREP(MC_ME_MAIN_COREID_CIDX_MASK, (v))
 #define MC_ME_MAIN_COREID_PIDX_MASK     GENMASK(12, 8)
 #define MC_ME_MAIN_COREID_PIDX(v)       FIELD_PREP(MC_ME_MAIN_COREID_PIDX_MASK, (v))
+#endif
 /* Partition p Process Configuration Register */
 #define MC_ME_PRTN_PCONF(p)             (0x100 + 0x200 * (p))
 #define MC_ME_PRTN_PCONF_PCE_MASK       BIT(0)
