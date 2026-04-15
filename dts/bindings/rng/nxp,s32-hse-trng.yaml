@@ -1,0 +1,9 @@
+description: NXP S32 HSE TRNG entropy source
+
+compatible: "nxp,s32-hse-trng"
+
+include: base.yaml
+
+properties:
+  status:
+    required: true
