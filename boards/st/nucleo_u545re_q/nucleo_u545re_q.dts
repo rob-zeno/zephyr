@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2021 Linaro Limited
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include "nucleo_u545re_q-common.dtsi"
+
+/ {
+	model = "STMicroelectronics STM32U545RE-Q-NUCLEO board";
+	compatible = "st,stm32u545re-nucleo-q";
+
+	chosen {
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,canbus = &fdcan1;
+	};
+};
