@@ -4,6 +4,13 @@ zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/drivers/fuel_gauge.h)
 
 zephyr_library()
 
+# this is needed because the actual drivers are all in sub folders; otherwise we get error:
+# CMake Warning at /Volumes/Zeno/NewZephyr/Code/Library/Zephyr/zephyr_src/zephyr/CMakeLists.txt:1103 (message):
+#  No SOURCES given to Zephyr library: drivers__fuel_gauge
+#
+#  Excluding target from build.
+zephyr_library_property(ALLOW_EMPTY TRUE)
+
 zephyr_library_sources_ifdef(CONFIG_USERSPACE fuel_gauge_syscall_handlers.c)
 
 if(CONFIG_EMUL AND CONFIG_USERSPACE)
@@ -13,6 +20,7 @@ endif()
 
 # zephyr-keep-sorted-start
 add_subdirectory_ifdef(CONFIG_BQ27Z746 bq27z746)
+add_subdirectory_ifdef(CONFIG_BQ34Z100 bq34z100)
 add_subdirectory_ifdef(CONFIG_BQ40Z50 bq40z50)
 add_subdirectory_ifdef(CONFIG_FUEL_GAUGE_AXP2101 axp2101)
 add_subdirectory_ifdef(CONFIG_FUEL_GAUGE_COMPOSITE composite)

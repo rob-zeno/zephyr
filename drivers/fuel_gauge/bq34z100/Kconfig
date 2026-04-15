@@ -1,0 +1,20 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config BQ34Z100
+	bool "BQ34Z100 Fuel Gauge"
+	default y
+	depends on DT_HAS_TI_BQ34Z100_ENABLED
+	select I2C
+	help
+	  Enable I2C-based driver for BQ34Z100 Fuel Gauge.
+
+config EMUL_BQ34Z100
+	bool "Emulate a BQ34Z100 fuel gauge"
+	default y
+	depends on EMUL
+	depends on BQ34Z100
+	help
+	  It provides readings which follow a simple sequence, thus allowing
+	  test code to check that things are working as expected.
