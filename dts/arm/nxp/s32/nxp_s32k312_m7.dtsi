@@ -62,41 +62,26 @@
 			reg = <0x40268000 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <1>;
+			ranges;
 
-			// we don't do any mapping because I don't think we need to
-			//ranges = <0x0 0x00400000 DT_SIZE_K(2048-48)>; /* 2048 KiB Flash window */
-
-			// Zephyr's flash system does not deal kindly with a single controller that
-			// has multiple banks, especially if those banks are non-contiguous
-
-			// we implement it by making it look like a single bank, and the driver
-			// does some "funky stuff" to know about the offsets and sizes
-			// of each bank.
-			//
-			// it looks a little gross, especially because the partitions
-			// all have to be based on the single bank.  but it works.
-
-			// code flash is 2MB - 48K that secure BAF keeps to itself
-			// data flash is 128K
-
-			// these two 'bank' items give us the information the driver
-			// needs to map the contiguous address range (0 thru (2MB-48K+128K)) onto
-			// the specific addresses that it passes to the C40 flash driver
-			pflash: bank@400000 {
-				compatible = "base";
-				reg = <0x400000 (DT_SIZE_K( 2048 ) - DT_SIZE_K( 48 ))>;
-			};
-			dflash: bank@10000000 {
-				compatible = "base";
-				reg = <0x10000000 DT_SIZE_K( 128 ) >;
-			};
-
-			flash0: flash@0 {
+			pflash: flash@400000 {
 				compatible = "nxp,c40-flash", "soc-nv-flash";
-				reg = <0x0 ( DT_SIZE_K( 2048 ) - DT_SIZE_K( 48 ) + DT_SIZE_K( 128 ) )>;
+				reg = <0x00400000 ( DT_SIZE_K(2048) - DT_SIZE_K(48) )>;
+				ranges = <0x0 0x00400000 ( DT_SIZE_K(2048) - DT_SIZE_K(48) )>;
 				erase-block-size = <DT_SIZE_K(8)>;  /* 8 KiB sectors */
 				write-block-size = <8>;             /* 8-byte min program unit */
-				status = "disabled";
+				#address-cells = <1>;
+				#size-cells = <1>;
+			};
+
+			dflash: flash@10000000 {
+				compatible = "nxp,c40-flash", "soc-nv-flash";
+				reg = <0x10000000 DT_SIZE_K(128)>;
+				ranges = <0x10000000 0x10000000 DT_SIZE_K(128)>;
+				erase-block-size = <DT_SIZE_K(8)>;  /* 8 KiB sectors */
+				write-block-size = <8>;             /* 8-byte min program unit */
+				#address-cells = <1>;
+				#size-cells = <1>;
 			};
 		};
 
