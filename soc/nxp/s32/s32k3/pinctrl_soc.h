@@ -14,6 +14,7 @@
 /* SIUL2 Multiplexed Signal Configuration */
 #define SIUL2_MSCR_SSS_MASK GENMASK(3, 0)
 #define SIUL2_MSCR_SSS(v)   FIELD_PREP(SIUL2_MSCR_SSS_MASK, (v))
+#ifndef SIUL2_MSCR_SMC_MASK
 #define SIUL2_MSCR_SMC_MASK BIT(5)
 #define SIUL2_MSCR_SMC(v)   FIELD_PREP(SIUL2_MSCR_SMC_MASK, (v))
 #define SIUL2_MSCR_IFE_MASK BIT(6)
@@ -37,6 +38,7 @@
 /* SIUL2 Input Multiplexed Signal Configuration */
 #define SIUL2_IMCR_SSS_MASK GENMASK(3, 0)
 #define SIUL2_IMCR_SSS(v)   FIELD_PREP(SIUL2_IMCR_SSS_MASK, (v))
+#endif
 
 #define NXP_SIUL2_PINMUX_INIT(group, value)                                                        \
 	.mscr = {                                                                                  \

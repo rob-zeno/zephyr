@@ -7,7 +7,18 @@
 #ifndef _NXP_S32_S32K_SOC_H_
 #define _NXP_S32_S32K_SOC_H_
 
+#if CONFIG_SOC_S32K344
 #include <S32K344.h>
+#endif
+
+#if CONFIG_SOC_S32K311
+#include <S32K311.h>
+#endif
+
+#if CONFIG_SOC_S32K312
+#include <S32K312.h>
+#endif
+
 #include <core_cm7.h>
 
 #if defined(CONFIG_CMSIS_RTOS_V2)

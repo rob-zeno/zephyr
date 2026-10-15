@@ -1,0 +1,7 @@
+menuconfig ENTROPY_NXP_S32K_HSE
+	bool "S32K HSE TRNG driver"
+	default y
+	depends on DT_HAS_NXP_S32_HSE_TRNG_ENABLED
+	select ENTROPY_HAS_DRIVER
+	help
+	  This option enables TRNG support via the S32K HSE.

@@ -30,6 +30,7 @@ LOG_MODULE_REGISTER(swt_nxp_s32);
 #else
 /* Control */
 #define SWT_CR           0x0
+#ifndef SWT_CR_WEN_MASK
 #define SWT_CR_WEN_MASK  BIT(0)
 #define SWT_CR_WEN(v)    FIELD_PREP(SWT_CR_WEN_MASK, (v))
 #define SWT_CR_FRZ_MASK  BIT(1)
@@ -48,36 +49,51 @@ LOG_MODULE_REGISTER(swt_nxp_s32);
 #define SWT_CR_RIA(v)    FIELD_PREP(SWT_CR_RIA_MASK, (v))
 #define SWT_CR_SMD_MASK  GENMASK(10, 9)
 #define SWT_CR_SMD(v)    FIELD_PREP(SWT_CR_SMD_MASK, (v))
+#endif
 #define SWT_CR_MAP_MASK  GENMASK(31, 24)
 #define SWT_CR_MAP(v)    FIELD_PREP(SWT_CR_MAP_MASK, (v))
 /* Interrupt */
 #define SWT_IR           0x4
+#ifndef SWT_IR_TIF_MASK
 #define SWT_IR_TIF_MASK  BIT(0)
 #define SWT_IR_TIF(v)    FIELD_PREP(SWT_IR_TIF_MASK, (v))
+#endif
 /* Timeout */
 #define SWT_TO           0x8
+#ifndef SWT_TO_WTO_MASK
 #define SWT_TO_WTO_MASK  GENMASK(31, 0)
 #define SWT_TO_WTO(v)    FIELD_PREP(SWT_TO_WTO_MASK, (v))
+#endif
 /* Window */
 #define SWT_WN           0xc
+#ifndef SWT_WN_WST_MASK
 #define SWT_WN_WST_MASK  GENMASK(31, 0)
 #define SWT_WN_WST(v)    FIELD_PREP(SWT_WN_WST_MASK, (v))
+#endif
 /* Service */
 #define SWT_SR           0x10
+#ifndef SWT_SR_WSC_MASK
 #define SWT_SR_WSC_MASK  GENMASK(15, 0)
 #define SWT_SR_WSC(v)    FIELD_PREP(SWT_SR_WSC_MASK, (v))
+#endif
 /* Counter Output */
 #define SWT_CO           0x14
+#ifndef SWT_CO_CNT_MASK
 #define SWT_CO_CNT_MASK  GENMASK(31, 0)
 #define SWT_CO_CNT(v)    FIELD_PREP(SWT_CO_CNT_MASK, (v))
+#endif
 /* Service Key */
 #define SWT_SK           0x18
+#ifndef SWT_SK_SK_MASK
 #define SWT_SK_SK_MASK   GENMASK(15, 0)
 #define SWT_SK_SK(v)     FIELD_PREP(SWT_SK_SK_MASK, (v))
+#endif
 /* Event Request */
 #define SWT_RRR          0x1c
+#ifndef SWT_RRR_RRF_MASK
 #define SWT_RRR_RRF_MASK BIT(0)
 #define SWT_RRR_RRF(v)   FIELD_PREP(SWT_RRR_RRF_MASK, (v))
+#endif
 #endif
 
 #define SWT_TO_WTO_MIN 0x100
