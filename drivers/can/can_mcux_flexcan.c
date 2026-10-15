@@ -1135,6 +1135,16 @@ static FLEXCAN_CALLBACK(mcux_flexcan_transfer_callback)
 		 * Unhandled status during Message Buffer processing.
 		 * If result field is 0xFF, it means no message buffer interrupt occurred.
 		 */
+		/*
+		 * rob@zenomoto.com 15 Oct 2026
+		 *
+		 * No message buffer had a pending interrupt -- the ISR woke for an
+		 * event already handled elsewhere (error/bus-off, or a second IRQ
+		 * line for the same event).  Benign.
+		 */
+		if (status_flags == 0xFFU) {
+			break;
+		}
 		__fallthrough;
 	default:
 		LOG_WRN("Unhandled status 0x%08x (result = 0x%016llx)",
