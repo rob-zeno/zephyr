@@ -319,6 +319,25 @@ int lpspi_configure(const struct device *dev, const struct spi_config *spi_cfg)
 	base->FCR = 0;
 	base->IER = 0;
 
+	/*
+	 * rob@zenomoto.com
+	 *
+	 * we use the "second solution" for this errata in our VCU, and
+	 * that implementation also talks to an STM32U585 over SPI, so
+	 * retain that workaround (we should make this a config option)
+	 */
+#define USE_ERR050456_SECOND_SOLUTION	1
+#if USE_ERR050456_SECOND_SOLUTION
+	/* ERR050456 "second solution" (as the NXP RTD): no module reset */
+	/* disable the module before touching CCR/CFGR1 */
+	base->CR &= ~LPSPI_CR_MEN_MASK;
+	while ((base->CR & LPSPI_CR_MEN_MASK) != 0) { }
+
+	base->CR |= LPSPI_CR_RRF_MASK;
+	(void)base->RDR;			/* read immediately after RRF */
+	base->CR |= LPSPI_CR_RTF_MASK;
+	for (int i = 0; i < 100000 && !(base->SR & LPSPI_SR_TCF_MASK); i++) { }
+#else
 	/* this is workaround for ERR050456 */
 	base->CR |= LPSPI_CR_RST_MASK;
 	base->CR |= LPSPI_CR_RRF_MASK | LPSPI_CR_RTF_MASK;
@@ -328,6 +347,7 @@ int lpspi_configure(const struct device *dev, const struct spi_config *spi_cfg)
 	while ((base->CR & LPSPI_CR_MEN_MASK) != 0) {
 		/* According to datasheet, should wait for this MEN bit to clear once idle */
 	}
+#endif
 
 	data->ctx.config = spi_cfg;
 
