@@ -163,7 +163,7 @@ static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void
 			if ( FLASH_GetSectorProtection( &data->cfg, addr ) == kStatus_FLASH_SectorLocked )
 			{
 				// we ignore errors; the write will fail anyway
-				FLASH_SetSectorProtection( &data->cfg, (uint32_t)(base + (uintptr_t)off), false );
+				FLASH_SetSectorProtection( &data->cfg, addr, false );
 			}
 			// get from somewhere!
 			addr += ( cfg->erase_block );
@@ -218,7 +218,7 @@ static int flash_mcux_c40_erase(const struct device *dev, off_t offt, size_t len
 			if ( FLASH_GetSectorProtection( &data->cfg, addr ) == kStatus_FLASH_SectorLocked )
 			{
 				// we ignore errors; the erase will fail anyway
-				FLASH_SetSectorProtection( &data->cfg, (uint32_t)(base + (uintptr_t)off), false );
+				FLASH_SetSectorProtection( &data->cfg, addr, false );
 			}
 			addr += ( cfg->erase_block );
 		}
