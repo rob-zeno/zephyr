@@ -119,6 +119,9 @@ static int flash_mcux_c40_read(const struct device *dev, off_t offt, void *buf, 
 	return 0;
 }
 
+/* largest write_block we can pad for (C40 is 8 bytes) */
+#define C40_MAX_WRITE_BLOCK	8
+
 static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void *buf, size_t len)
 {
 	const struct mcux_c40_cfg *cfg = dev->config;
@@ -126,22 +129,45 @@ static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void
 	k_spinlock_key_t key;
 	status_t st;
 
-	/* Bounds check */
+	/* a write that isn't a multiple of write_block (e.g. the last chunk of an
+	 * OTA image) is split in two: the aligned head is written directly and the
+	 * remaining tail is copied into a block padded with 0xFF (the erased
+	 * value) so the final write is a full write_block.
+	 *
+	 * NOTE: the C40 programs ECC per write_block, so the bytes padded with
+	 * 0xFF are really programmed -- the padded block cannot be written again
+	 * without an erase.  This is only OK if the short write is the last
+	 * write to that block (true for the end of an image).
+	 */
+	uint8_t tail[C40_MAX_WRITE_BLOCK] __aligned(4);
+	const size_t head_len = len - ( len % cfg->write_block );
+	const size_t tail_len = len - head_len;
+	const size_t padded_len = head_len + ( tail_len ? cfg->write_block : 0 );
+
+	if ( cfg->write_block == 0 || cfg->write_block > sizeof( tail ) ) {
+		return -EINVAL;
+	}
+
+	/* Bounds check (includes the padding) */
 	uint32_t base;
 	uint32_t off = offt;
-	if (!flash_mcux_c40_calculate_base_and_offset( cfg, &base, &off, len ) ) {
+	if (!flash_mcux_c40_calculate_base_and_offset( cfg, &base, &off, padded_len ) ) {
 		return -EINVAL;
 	}
 
 	/* The HAL enforces alignment to C40 constraints:
 	 * Minimum write chunk is C40_WRITE_SIZE_MIN (8 bytes).
 	 * Writes are most efficient in quad-page (128 bytes).
-	 * We perform a light check: write must be multiple of write_block,
-	 * and start aligned to write_block. For more flexibility, you could
-	 * implement a read-modify-write cache; for now we map 1:1 to HAL.
+	 * The start must be aligned to write_block; a short final chunk is
+	 * padded (see above).
 	 */
-	if (((uintptr_t)off % cfg->write_block) != 0 || (len % cfg->write_block) != 0) {
+	if (((uintptr_t)off % cfg->write_block) != 0) {
 		return -EINVAL;
+	}
+
+	if ( tail_len ) {
+		memset( tail, 0xFF, sizeof( tail ) );
+		memcpy( tail, (const uint8_t *)buf + head_len, tail_len );
 	}
 
 	key = k_spin_lock(&data->lock);
@@ -150,14 +176,14 @@ static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void
 
 	z_barrier_isync_fence_full();
 
-	// Zephyr doesn't provide an API for locking/unlocking sectors, so we
+	// Zeno: Zephyr doesn't provide an API for locking/unlocking sectors, so we
 	//	go ahead and do it here -- we don't use that feature anyway
 	// The API documentation LOOKS like you do not have to specify a
 	//	sector boundary, so hopefully that's true
 	{
 		uint32_t addr, end;
 		addr = (uint32_t)(base + (uintptr_t)off);
-		end = addr + len;
+		end = addr + padded_len;
 		while ( addr < end )
 		{
 			if ( FLASH_GetSectorProtection( &data->cfg, addr ) == kStatus_FLASH_SectorLocked )
@@ -169,15 +195,23 @@ static int flash_mcux_c40_write(const struct device *dev, off_t offt, const void
 			addr += ( cfg->erase_block );
 		}
 	}
-	st = FLASH_Program(&data->cfg, (uint32_t)(base + (uintptr_t)off), (uint32_t *)buf,
-			   (uint32_t)len);
+
+	st = kStatus_FLASH_Success;
+	if ( head_len > 0 ) {
+		st = FLASH_Program(&data->cfg, (uint32_t)(base + (uintptr_t)off), (uint32_t *)buf,
+				   (uint32_t)head_len);
+	}
+	if ( st == kStatus_FLASH_Success && tail_len > 0 ) {
+		st = FLASH_Program(&data->cfg, (uint32_t)(base + (uintptr_t)off + head_len),
+				   (uint32_t *)tail, (uint32_t)cfg->write_block);
+	}
 
 	barrier_dsync_fence_full();
 
 	k_spin_unlock(&data->lock, key);
 
 	/* The array changed behind the CPU; drop stale D-cache lines covering the range */
-	sys_cache_data_invd_range((void *)(base + (uintptr_t)off), len);
+	sys_cache_data_invd_range((void *)(base + (uintptr_t)off), padded_len);
 
 	return mcux_to_errno(st);
 }
